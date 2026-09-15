@@ -30,8 +30,8 @@ def show_cases(limit: int = 20) -> None:
         print("No cases saved yet.")
         return
     for c in cases:
-        risk_mark = "RISK" if c["risk_flag"] else "    "
-        print(f"[{c['id']:>4}] {risk_mark}  {c['created_at']}  {c['seed_address']}  "
+        level = (c.get("risk_level") or "none").upper().ljust(6)
+        print(f"[{c['id']:>4}] {level}  {c['created_at']}  {c['seed_address']}  "
               f"-> {c['entity_type']}/{c['label'] or '?'}  (confidence {c['confidence']})")
 
 
@@ -66,7 +66,8 @@ def run(address: str, max_hops: int = 4) -> None:
     print("-" * 60)
     print(f"Compliance status  : {risk.compliance_status}")
     print(f"Compliance detail  : {risk.compliance_detail}")
-    print(f"RISK FLAG          : {'YES — ' + risk.risk_reason if risk.risk_flag else 'no'}")
+    print(f"RISK LEVEL         : {risk.risk_level.upper()}"
+          + (f" — {risk.risk_reason}" if risk.risk_reason else ""))
     print("=" * 60)
 
     try:

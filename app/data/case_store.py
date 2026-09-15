@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS cases (
     compliance_status TEXT,
     compliance_detail TEXT,
     risk_flag BOOLEAN NOT NULL DEFAULT FALSE,
+    risk_level TEXT NOT NULL DEFAULT 'none',
     risk_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -61,15 +62,15 @@ def save_case(chain: str, trace_result, risk_assessment, conn=None) -> int:
                 """
                 INSERT INTO cases
                     (seed_address, chain, entity_type, label, confidence, hop_count, path,
-                     compliance_status, compliance_detail, risk_flag, risk_reason)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     compliance_status, compliance_detail, risk_flag, risk_level, risk_reason)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
                     trace_result.seed_address, chain, trace_result.entity_type, trace_result.label,
                     trace_result.confidence, trace_result.hop_count, json.dumps(trace_result.path),
                     risk_assessment.compliance_status, risk_assessment.compliance_detail,
-                    risk_assessment.risk_flag, risk_assessment.risk_reason,
+                    risk_assessment.risk_flag, risk_assessment.risk_level, risk_assessment.risk_reason,
                 ),
             )
             case_id = cur.fetchone()[0]
