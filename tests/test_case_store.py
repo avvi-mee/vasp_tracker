@@ -28,7 +28,7 @@ def test_save_case_inserts_and_returns_new_id():
     result = TraceResult(seed_address="0xaaa", path=["0xaaa", "0xbbb"], graph=nx.DiGraph(),
                           hop_count=1, entity_type="exchange", label="Binance 1", confidence=0.9)
     risk = RiskAssessment(compliance_status="registered_after_penalty",
-                           compliance_detail="test", risk_flag=False)
+                           compliance_detail="test", risk_flag=False, risk_level="none")
 
     case_id = save_case("ETH", result, risk, conn=conn)
 
@@ -38,6 +38,7 @@ def test_save_case_inserts_and_returns_new_id():
     assert "INSERT INTO cases" in args[0]
     assert args[1][0] == "0xaaa"   # seed_address
     assert args[1][1] == "ETH"     # chain
+    assert "none" in args[1]       # risk_level made it into the insert params
 
 
 def test_list_cases_returns_rows_as_dicts():

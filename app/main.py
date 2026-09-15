@@ -137,10 +137,15 @@ def _render_verdict(result, risk, chain):
     if result.reason:
         st.caption(f"Reason: {result.reason}")
 
-    if risk.risk_flag:
-        st.error(f"⚠ RISK FLAGGED — {risk.risk_reason}")
+    level = risk.risk_level
+    if level == "high":
+        st.error(f"⚠ RISK: HIGH — {risk.risk_reason}")
+    elif level == "medium":
+        st.warning(f"⚠ RISK: MEDIUM — {risk.risk_reason}")
+    elif level == "low":
+        st.info(f"RISK: LOW — {risk.risk_reason}")
     else:
-        st.success("No risk flag raised.")
+        st.success("RISK: NONE")
     st.write(f"**Compliance status:** `{risk.compliance_status}` — {risk.compliance_detail}")
 
     st.divider()
@@ -162,7 +167,7 @@ def render_dashboard():
     st.caption("Every trace run through this app, saved automatically.")
     try:
         init_db()
-        cases = list_cases(limit=100)
+        cases = list_cases(limit=200)
     except Exception as exc:
         st.warning(f"Case database unreachable — set DATABASE_URL in .env. ({exc})")
         return
@@ -172,10 +177,41 @@ def render_dashboard():
         return
 
     import pandas as pd
-    df = pd.DataFrame(cases)[["id", "created_at", "seed_address", "entity_type", "label",
-                              "confidence", "compliance_status", "risk_flag"]]
-    st.dataframe(df, use_container_width=True, hide_index=True)
-    st.caption(f"{len(cases)} case(s) shown (most recent first, limit 100).")
+    df = pd.DataFrame(cases)
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("Total cases", len(df))
+    m2.metric("High risk", int((df["risk_level"] == "high").sum()))
+    m3.metric("Medium risk", int((df["risk_level"] == "medium").sum()))
+    m4.metric("Distinct entities found", df["label"].dropna().nunique())
+    m5.metric("Chains covered", df["chain"].nunique())
+
+    st.divider()
+    f1, f2, f3, f4 = st.columns([2, 2, 2, 3])
+    chain_filter = f1.multiselect("Chain", sorted(df["chain"].unique()))
+    entity_filter = f2.multiselect("Entity type", sorted(df["entity_type"].dropna().unique()))
+    risk_filter = f3.multiselect("Risk level", ["high", "medium", "low", "none"])
+    search = f4.text_input("Search address", placeholder="0x... or T...")
+
+    filtered = df.copy()
+    if chain_filter:
+        filtered = filtered[filtered["chain"].isin(chain_filter)]
+    if risk_filter:
+        filtered = filtered[filtered["risk_level"].isin(risk_filter)]
+    if entity_filter:
+        filtered = filtered[filtered["entity_type"].isin(entity_filter)]
+    if search:
+        filtered = filtered[filtered["seed_address"].str.contains(search, case=False, na=False)]
+
+    if not filtered.empty:
+        st.bar_chart(filtered["entity_type"].value_counts(), use_container_width=True)
+
+    st.dataframe(
+        filtered[["id", "created_at", "chain", "seed_address", "entity_type", "label",
+                  "confidence", "compliance_status", "risk_level"]],
+        use_container_width=True, hide_index=True,
+    )
+    st.caption(f"{len(filtered)} of {len(df)} case(s) shown (most recent first, limit 200).")
 
 
 page = st.sidebar.radio("View", ["Lookup", "Case Dashboard"])
