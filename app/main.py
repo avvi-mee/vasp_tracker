@@ -12,6 +12,7 @@ from app.graph.trace import trace_to_nearest_entity
 from app.graph.risk import assess
 from app.data.case_store import init_db, save_case, list_cases
 from app.sahyog.gateway import build_disclosure_request, submit_disclosure_request
+from app.graph.chain_detect import detect_chain
 
 load_dotenv()
 st.set_page_config(page_title="VASP Trace", page_icon="🔗", layout="wide")
@@ -39,9 +40,20 @@ def render_lookup():
     st.title("VASP Trace")
     st.caption("Automated attribution of unknown wallets to nearest VASPs — SIH26182")
 
+    def _on_address_change():
+        detected, _ = detect_chain(st.session_state.get("address_input", ""))
+        if detected:
+            st.session_state["chain_select"] = detected
+
     col1, col2 = st.columns([3, 1])
-    address = col1.text_input("Wallet address", placeholder="0xF835A0247b0063C04EF22006eBe57c5F11977Cc4")
-    chain = col2.selectbox("Chain", list(CHAINS.keys()))
+    address = col1.text_input("Wallet address", placeholder="0xF835A0247b0063C04EF22006eBe57c5F11977Cc4",
+                              key="address_input", on_change=_on_address_change)
+    chain = col2.selectbox("Chain", list(CHAINS.keys()), key="chain_select")
+
+    if address:
+        _, detect_note = detect_chain(address)
+        if detect_note:
+            st.caption(f"🔎 {detect_note}")
 
     if st.button("Trace", type="primary"):
         chain_cfg = CHAINS[chain]
