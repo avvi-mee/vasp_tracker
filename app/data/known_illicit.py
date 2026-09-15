@@ -17,5 +17,10 @@ KNOWN_ILLICIT = {
 }
 
 
+def _normalize(address: str) -> str:
+    """Same rule as app/graph/trace.py: hex is case-insensitive, base58 isn't."""
+    return address.lower() if address.startswith(("0x", "0X")) else address
+
+
 def check_illicit(address: str) -> dict | None:
-    return KNOWN_ILLICIT.get(address.lower())
+    return KNOWN_ILLICIT.get(_normalize(address))

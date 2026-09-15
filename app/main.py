@@ -3,7 +3,8 @@ import json
 import streamlit as st
 from dotenv import load_dotenv
 
-from app.api_clients.etherscan import fetch_transactions
+from app.api_clients.etherscan import fetch_transactions as fetch_evm, ETH_CHAIN_ID, POLYGON_CHAIN_ID
+from app.api_clients.tronscan import fetch_transactions as fetch_tron
 from app.data.tagpacks import load_labels
 from app.data.known_mixers import KNOWN_MIXERS
 from app.graph.trace import trace_to_nearest_entity
@@ -14,13 +15,17 @@ from app.sahyog.gateway import build_disclosure_request, submit_disclosure_reque
 load_dotenv()
 st.set_page_config(page_title="VASP Trace", page_icon="🔗", layout="wide")
 
+# Chain adapter registry — enabled chains carry a currency code + fetch function
+# with the same normalized-transaction interface (see api_clients/*.py).
 CHAINS = {
-    "Ethereum": True,
-    "Bitcoin — coming soon": False,
-    "Tron — coming soon": False,
-    "BNB Chain — coming soon": False,
-    "Solana — coming soon": False,
-    "Polygon — coming soon": False,
+    "Ethereum": {"enabled": True, "currency": "ETH",
+                 "fetch": lambda a: fetch_evm(a, chainid=ETH_CHAIN_ID, asset_type="ETH")},
+    "Polygon": {"enabled": True, "currency": "MATIC",
+                "fetch": lambda a: fetch_evm(a, chainid=POLYGON_CHAIN_ID, asset_type="MATIC")},
+    "Tron": {"enabled": True, "currency": "TRX", "fetch": lambda a: fetch_tron(a)},
+    "Bitcoin — coming soon": {"enabled": False},
+    "BNB Chain — coming soon": {"enabled": False},
+    "Solana — coming soon": {"enabled": False},
 }
 
 
@@ -38,9 +43,11 @@ def render_lookup():
     chain = col2.selectbox("Chain", list(CHAINS.keys()))
 
     if st.button("Trace", type="primary"):
-        if not CHAINS[chain]:
+        chain_cfg = CHAINS[chain]
+        if not chain_cfg["enabled"]:
             st.warning(f"{chain} isn't wired up in this build yet — the API-client pattern "
-                       f"extends cleanly to it (see the roadmap), just not built yet. Try Ethereum.")
+                       f"extends cleanly to it (see the roadmap), just not built yet. "
+                       f"Try Ethereum, Polygon, or Tron.")
             return
         if not address:
             st.error("Enter an address first.")
@@ -50,8 +57,8 @@ def render_lookup():
         with st.spinner("Tracing across the chain..."):
             try:
                 result = trace_to_nearest_entity(
-                    seed_address=address, currency="ETH",
-                    fetch_transactions_fn=lambda a: fetch_transactions(a),
+                    seed_address=address, currency=chain_cfg["currency"],
+                    fetch_transactions_fn=chain_cfg["fetch"],
                     labels_lookup=labels, mixers_lookup=KNOWN_MIXERS, max_hops=4,
                 )
             except Exception as exc:
@@ -61,11 +68,11 @@ def render_lookup():
         risk = assess(result)
         st.session_state["last_result"] = result
         st.session_state["last_risk"] = risk
-        st.session_state["last_chain"] = "ETH"
+        st.session_state["last_chain"] = chain_cfg["currency"]
 
         try:
             init_db()
-            case_id = save_case("ETH", result, risk)
+            case_id = save_case(chain_cfg["currency"], result, risk)
             st.session_state["last_case_id"] = case_id
         except Exception as exc:
             st.session_state["last_case_id"] = None

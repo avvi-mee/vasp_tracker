@@ -8,10 +8,11 @@ import requests
 
 BASE_URL = "https://api.etherscan.io/v2/api"
 ETH_CHAIN_ID = 1
+POLYGON_CHAIN_ID = 137  # still free-tier as of this research — see research/01-block-explorer-apis.md
 
 
 def fetch_transactions(address: str, api_key: str | None = None, chainid: int = ETH_CHAIN_ID,
-                        max_records: int = 100) -> list[dict]:
+                        max_records: int = 100, asset_type: str = "ETH") -> list[dict]:
     """Return this address's normal transactions, normalized to a common shape:
     {tx_hash, block_number, timestamp, from_addr, to_addr, value_wei, asset_type}
     """
@@ -50,7 +51,7 @@ def fetch_transactions(address: str, api_key: str | None = None, chainid: int = 
             "from_addr": tx["from"].lower(),
             "to_addr": (tx["to"] or "").lower(),
             "value_wei": int(tx["value"]),
-            "asset_type": "ETH",
+            "asset_type": asset_type,
         }
         for tx in result
     ]

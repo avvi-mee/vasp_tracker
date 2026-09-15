@@ -28,6 +28,13 @@ def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
     return round(max(0.3, min(0.95, score)), 2)
 
 
+def _normalize(address: str) -> str:
+    """Hex addresses (0x...) are case-insensitive — lowercase for consistent
+    matching. Base58 addresses (Tron, Bitcoin) ARE case-sensitive — leave
+    them exactly as given, lowercasing would silently corrupt them."""
+    return address.lower() if address.startswith(("0x", "0X")) else address
+
+
 def trace_to_nearest_entity(
     seed_address: str,
     currency: str,
@@ -40,7 +47,7 @@ def trace_to_nearest_entity(
     (see app/api_clients/etherscan.py for the shape)."""
     from app.data.tagpacks import lookup_address  # local import avoids a hard circular dep
 
-    seed_address = seed_address.lower()
+    seed_address = _normalize(seed_address)
     path = [seed_address]
     g = nx.DiGraph()
     g.add_node(seed_address)
@@ -69,7 +76,7 @@ def trace_to_nearest_entity(
                                 confidence=0.0, reason="dead end — no outgoing transactions found")
 
         dominant = max(outgoing, key=lambda t: t["value_wei"])
-        next_addr = dominant["to_addr"]
+        next_addr = _normalize(dominant["to_addr"])
         g.add_edge(current, next_addr, tx_hash=dominant["tx_hash"], value_wei=dominant["value_wei"])
         path.append(next_addr)
         current = next_addr
