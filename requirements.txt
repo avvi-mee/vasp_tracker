@@ -1,0 +1,9 @@
+# SIH26182 — dependencies
+streamlit
+requests
+pandas
+networkx
+PyYAML
+python-dotenv
+pytest
+psycopg2-binary   # Postgres driver — case storage via Supabase (see app/data/case_store.py)
