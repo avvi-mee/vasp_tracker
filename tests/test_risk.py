@@ -67,3 +67,26 @@ def test_mixer_is_always_risk_flagged_high():
     assert risk.risk_flag is True
     assert risk.risk_level == "high"
     assert risk.compliance_status == "n/a"
+
+
+def test_ofac_labeled_address_is_high_risk_even_with_entity_type_user():
+    """Regression test: real OFAC SDN addresses (via GraphSense TagPacks'
+    ofac.yaml) come through with entity_type='user', not 'exchange'.
+    Before this fix, that fell through to the generic low-risk 'no
+    entity matched' case, which was wrong — it's a confirmed sanctions
+    hit, not an absence of one. Caught live-testing a real address."""
+    result = _fake_result(["0xaaa"], "user", "Asset listed under US Treasury OFAC Sanctions List")
+    risk = assess(result)
+    assert risk.risk_flag is True
+    assert risk.risk_level == "high"
+    assert "OFAC" in risk.risk_reason
+
+
+def test_labeled_non_exchange_entity_is_low_risk_not_falsely_unmatched():
+    """A label WAS found (e.g. a DeFi protocol), just not a category we
+    have specific risk rules for — should say so, not claim no match."""
+    result = _fake_result(["0xaaa"], "defi_dex", "Some DEX Protocol")
+    risk = assess(result)
+    assert risk.risk_flag is True
+    assert risk.risk_level == "low"
+    assert "Some DEX Protocol" in risk.compliance_detail
