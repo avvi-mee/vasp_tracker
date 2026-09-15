@@ -4,6 +4,7 @@ research/08-demo-addresses.md. MVP scope: a small hand-curated list, not a
 live feed — an address not listed here simply isn't flagged, which is a
 coverage limit, not a "confirmed clean" result.
 """
+from app.addresses import normalize_address as _normalize
 
 KNOWN_ILLICIT = {
     "0x098b716b8aaf21512996dc57eb0615e2383e2f96": {
@@ -15,11 +16,6 @@ KNOWN_ILLICIT = {
         "reason": "2016 reentrancy exploit — ~3.6M ETH drained; not sanctioned, but publicly documented",
     },
 }
-
-
-def _normalize(address: str) -> str:
-    """Same rule as app/graph/trace.py: hex is case-insensitive, base58 isn't."""
-    return address.lower() if address.startswith(("0x", "0X")) else address
 
 
 def check_illicit(address: str) -> dict | None:

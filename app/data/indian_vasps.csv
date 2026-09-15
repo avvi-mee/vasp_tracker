@@ -1,0 +1,113 @@
+chain,address,exchange,name_tag,confidence,source
+BTC,12T8i8tpeczk5JGf8ppZf1w6SFBRwEa9y4,CoinDCX,CoinDCX 1,single-source,dune-spellbook
+BTC,12hGEyxk4zMLquxiMiFrkvYSohsXz2D3uZ,CoinDCX,CoinDCX 2,single-source,dune-spellbook
+BTC,1477uXZ1NfUaaZZdnztQ7h8ftGRpuWQPfA,CoinDCX,CoinDCX 3,single-source,dune-spellbook
+BTC,17mxRZ9WeXigSwg3Cm62HxeATnuUphMxGL,CoinDCX,CoinDCX 4,single-source,dune-spellbook
+BTC,1CJ7XmM3C72i5qDgEJAkzWq5VDJ51gbdLR,CoinDCX,CoinDCX 25,single-source,dune-spellbook
+BTC,1F6CrpEnHEZh6gQtJ7cf1MtK7Y8GYKoP4i,CoinDCX,CoinDCX 5,single-source,dune-spellbook
+BTC,1HLkxeuEDCFMbKGCzXR1uAdMJgjJcpNs2H,CoinDCX,CoinDCX 26,single-source,dune-spellbook
+BTC,1JV3umtGC6H6tFUVoFyV5KwbJDscUwrtX7,CoinDCX,CoinDCX 6,single-source,dune-spellbook
+BTC,1KXxS6QnzpB8mSLm5kmXJXqvZF7wVvQDCw,CoinDCX,CoinDCX 7,single-source,dune-spellbook
+BTC,1MzSJodjNmACPKyj9VUv9X55Pby87osLhc,CoinDCX,CoinDCX 8,single-source,dune-spellbook
+BTC,1PRwacjHVksLNTkSYNkiWkRgTm1yDSgLMG,CoinDCX,CoinDCX 9,single-source,dune-spellbook
+BTC,1avi3SkWKGLis8dGCP9JUnFfVeheP8wkt,CoinDCX,CoinDCX 10,single-source,dune-spellbook
+BTC,3Dm2TL1pt1VzeBCq9jgvQG81QPv19PyReh,CoinDCX,CoinDCX 11,single-source,dune-spellbook
+BTC,bc1q7c9ylgjsyc0yaxwm84jjh6avfajzfe7dhk6e0e,CoinDCX,CoinDCX 12,single-source,dune-spellbook
+BTC,bc1qedxsgzuj8ga644gwlqw4nw7f3xncq4g2rskmzu,CoinDCX,CoinDCX 13,single-source,dune-spellbook
+BTC,bc1qffg4ya27430vv5ymg2lhf4mj7tvtc3ur5qyyq3,CoinDCX,CoinDCX 14,single-source,dune-spellbook
+BTC,bc1qhlyrdhfqry06nj902p9dxdftm4pxkhdqeum8y8,CoinDCX,CoinDCX 15,single-source,dune-spellbook
+BTC,bc1qljm7vwdgdy6ca97stsyjyl3zdjtkdsdm8vnh8f,CoinDCX,CoinDCX 16,single-source,dune-spellbook
+BTC,bc1qmulc2ju4kykj24xuw0fu73h9h3usa897xhaucz,CoinDCX,CoinDCX 17,single-source,dune-spellbook
+BTC,bc1qn2xm6agnanuyuwfcfw92el7nvt2lpsqr5s5c0w,CoinDCX,CoinDCX 18,single-source,dune-spellbook
+BTC,bc1qpl5kqjkugyncr72a4fhxvm0360ehfdl27e00ja,CoinDCX,CoinDCX 19,single-source,dune-spellbook
+BTC,bc1qqe4g7sjxzk90nsgj0mwufwcdtd7kufg7k32xch,CoinDCX,CoinDCX 20,single-source,dune-spellbook
+BTC,bc1qqhwh3tcg5duwq7hdlnlr5n2tg2uq755cwmkjqn,CoinDCX,CoinDCX 21,single-source,dune-spellbook
+BTC,bc1qucl4n347qc6e48w85xdxcv86sm3an8fr250hhm,CoinDCX,CoinDCX 22,single-source,dune-spellbook
+BTC,bc1qygg2x02cfy0e6r7798v4qrcjjkzm8tl5t0xkwf,CoinDCX,CoinDCX 23,single-source,dune-spellbook
+BTC,bc1qz22hegkllltcydg3pz3an6h352mjmyp7n2vhd9,CoinDCX,CoinDCX 24,single-source,dune-spellbook
+EVM,0x06051836ac6c5112b890f8b6ec78e33d1afeae7c,CoinDCX,CoinDCX 28,confirmed,etherscan public tag + dune-spellbook
+EVM,0x07e114c06462d8892ae4574a7502b8c1c0fbdfbb,CoinDCX,CoinDCX 29,single-source,dune-spellbook
+EVM,0x0b5ffae844a4b21c7beeded2595f22215288173c,CoinDCX,CoinDCX 30,single-source,dune-spellbook
+EVM,0x1ce0c2827e2ef14d5c4f29a091d735a204794041,CoinDCX,CoinDCX 38,single-source,dune-spellbook
+EVM,0x2407b9b9662d970ece2224a0403d3b15c7e4d1fe,CoinDCX,CoinDCX 43,confirmed,etherscan public tag + dune-spellbook
+EVM,0x274c427b1bf0bb4a137ede688c6d621263ca7ce8,CoinDCX,CoinDCX 26,confirmed,etherscan public tag + dune-spellbook
+EVM,0x29a62a542b6ea441abb6f03c2bca54ad72ff750c,CoinDCX,CoinDCX 27,confirmed,etherscan public tag + dune-spellbook
+EVM,0x2deffdde0867b6eca9a63fe53ef0fc3106d3dba0,CoinDCX,CoinDCX Gas Supplier 3,single-source,dune-spellbook
+EVM,0x2e5129e77c928d96b5a70c0effb97ee6e95d77b6,CoinDCX,CoinDCX 1,confirmed,etherscan public tag + dune-spellbook
+EVM,0x35efe40ceddb8dfa27f0c3e4cd65b711c29cb5d8,CoinDCX,CoinDCX 46,single-source,dune-spellbook
+EVM,0x3698cc7f524bade1a05e02910538f436a3e94384,CoinDCX,CoinDCX 2,single-source,dune-spellbook
+EVM,0x37b6bd5fece5b88b6e8e825196bcc868a2feed51,CoinDCX,CoinDCX 3,single-source,dune-spellbook
+EVM,0x38f76d1c8fcc854fb4d2416ddaec8df41ab60867,CoinDCX,CoinDCX 4,single-source,dune-spellbook
+EVM,0x44a69d8443521969ffdc8a0721ad1013582d7097,CoinDCX,CoinDCX Gas Supplier 4,single-source,dune-spellbook
+EVM,0x4928b328d4261120a493dfdb32b6d4cc57d58850,CoinDCX,CoinDCX 47,single-source,dune-spellbook
+EVM,0x4d24eececb86041f47bca41265319e9f06ae2fcb,CoinDCX,CoinDCX 5,single-source,dune-spellbook
+EVM,0x50b0063161e507bec6c21cc23fd11ec2945b7b52,CoinDCX,CoinDCX 31,confirmed,etherscan public tag + dune-spellbook
+EVM,0x529c070deaf3872609fe167ea7b7037a62ed5257,CoinDCX,CoinDCX 49,single-source,dune-spellbook
+EVM,0x59548449926551acb5480d610292c4266b872bef,CoinDCX,CoinDCX 32,single-source,dune-spellbook
+EVM,0x5fed0d9be6fd42e086e0d4f1bf6cecd19635dead,CoinDCX,CoinDCX 33,single-source,dune-spellbook
+EVM,0x660e3bd3bcda11538fa331282666f1d001b87a42,CoinDCX,CoinDCX 6,confirmed,etherscan public tag + dune-spellbook
+EVM,0x6d92f2e52481ce219d201eaa1b0cf6839270152f,CoinDCX,CoinDCX 35,single-source,dune-spellbook
+EVM,0x7157bb38613c5362e59dfd769c2fcf4996b4cc8b,CoinDCX,CoinDCX 45,single-source,dune-spellbook
+EVM,0x763104507945b6b7f21ee68b92048a53f7debf18,CoinDCX,CoinDCX 7,single-source,dune-spellbook
+EVM,0x78bba2389c2ceeb6f94c70ed133712e3b3e2c4d0,CoinDCX,CoinDCX 8,single-source,dune-spellbook
+EVM,0x7cccf66db1a0d4069a52a0c26859edbc34177065,CoinDCX,CoinDCX 36,single-source,dune-spellbook
+EVM,0x881f982575a3ecbea6fe133ddb0951303215d130,CoinDCX,CoinDCX 9,single-source,dune-spellbook
+EVM,0x892787c947fdd1cf6c525c6107d80265d3d7ebb4,CoinDCX,CoinDCX 10,single-source,dune-spellbook
+EVM,0x8c7efd5b04331efc618e8006f19019a3dc88973e,CoinDCX,CoinDCX 11,single-source,dune-spellbook
+EVM,0x90f76616d34cb6a1f4423b33c0201b2a1980fc81,CoinDCX,CoinDCX 41,single-source,dune-spellbook
+EVM,0x978e746330870627cc353092edd2dba3cc99461c,CoinDCX,CoinDCX 42,single-source,dune-spellbook
+EVM,0xa15b94629727152c952a6979d899f71426ce7976,CoinDCX,CoinDCX 12,single-source,dune-spellbook
+EVM,0xa4fe2f90a8991a410c825c983cbb6a92d03607fc,CoinDCX,CoinDCX 13,single-source,dune-spellbook
+EVM,0xa916a54af7553bae6172e510d067826bd204d0dd,CoinDCX,CoinDCX 14,single-source,dune-spellbook
+EVM,0xaa8bc1fc0fcfdca5b7e5d35e5ac13800850d90c7,CoinDCX,CoinDCX 15,single-source,dune-spellbook
+EVM,0xabd9193388c58d7e9f45ff5e4ca741212d1ec827,CoinDCX,CoinDCX Gas Supplier 2,single-source,dune-spellbook
+EVM,0xada1fa671651d335998c6a0de336a78f5b49ad3f,CoinDCX,CoinDCX 34,single-source,dune-spellbook
+EVM,0xb188a49da0836c289dcb4fa0e856647a33de537f,CoinDCX,CoinDCX 19,single-source,dune-spellbook
+EVM,0xb6dfcf39503dddde140105954a819e944ce543a7,CoinDCX,CoinDCX 20,single-source,dune-spellbook
+EVM,0xb79421720b92180487f71f13c5d5d8b9eca27bf1,CoinDCX,CoinDCX 21,single-source,dune-spellbook
+EVM,0xb85e9868a0e8492353db5c3022e6f96fc62f2306,CoinDCX,CoinDCX 22,single-source,dune-spellbook
+EVM,0xc1723af0dc5400a1caaa47e76a45c39538a6ad49,CoinDCX,CoinDCX 37,single-source,dune-spellbook
+EVM,0xc4e805208d8d25b71bdcfb558f29259544ec4fcc,CoinDCX,CoinDCX Gas Supplier 1,single-source,dune-spellbook
+EVM,0xccfa6f3b01c7bf07b033a9d496fdf22f0cdf5293,CoinDCX,CoinDCX 16,single-source,dune-spellbook
+EVM,0xd4d7aedb9abeec03101db6f8426deee390e3ccf9,CoinDCX,CoinDCX 39,single-source,dune-spellbook
+EVM,0xdf263bd241b694b1fbe30ee954757ddded7d95e6,CoinDCX,CoinDCX 48,single-source,dune-spellbook
+EVM,0xe298dc1c377e4511f32afd2362726c4f3a644356,CoinDCX,CoinDCX 23,single-source,dune-spellbook
+EVM,0xef0fc6322b2b5b02f0db68f8ea74819560124b2d,CoinDCX,CoinDCX 17,single-source,dune-spellbook
+EVM,0xf031356fa1bd3949420884db1a35a99422e36df1,CoinDCX,CoinDCX 44,single-source,dune-spellbook
+EVM,0xf250ee103b8e4c5b9825a270e5c70ea0c113c854,CoinDCX,CoinDCX 40,single-source,dune-spellbook
+EVM,0xf25d1d2507ce1f956f5bab45ad2341e3c0db6d3c,CoinDCX,CoinDCX 18,single-source,dune-spellbook
+EVM,0xf379fcd9c996d85de025985ba9b1c9c96daa4a72,CoinDCX,CoinDCX 25,single-source,dune-spellbook
+EVM,0xf809c975efad2bc33e21b5972db765a6230e956a,CoinDCX,CoinDCX 24,single-source,dune-spellbook
+TRX,TAWK8YMnn7yAfnQRyvjiBv9ksocFt9qNdR,CoinDCX,CoinDCX 11,single-source,dune-spellbook
+TRX,TDdT3q5TZVR7RvsQx6fxik3wjCYdFGxBVy,CoinDCX,CoinDCX 9,single-source,dune-spellbook
+TRX,TDePQj7ZfFNuDJdWJE7Gy2L9LcndW9Gpjq,CoinDCX,CoinDCX 7,single-source,dune-spellbook
+TRX,TFLxNHunhEizmeEdiMyA3r2XGLSKaEznGd,CoinDCX,CoinDCX 10,single-source,dune-spellbook
+TRX,TGjpmhAFT6d7eBKvaFwPVN6H2pDKgLLZiw,CoinDCX,CoinDCX 1,single-source,dune-spellbook
+TRX,THEAKkH9JuhF5oWTy9jSeumAYyHSFBepAw,CoinDCX,CoinDCX 4,single-source,dune-spellbook
+TRX,TLvAURZkwUJpRvfccNiCuXqktaaBbu8NVi,CoinDCX,CoinDCX 5,single-source,dune-spellbook
+TRX,TM5r1bNJ2TjZwfS757tPPtr84MwtEjL9qN,CoinDCX,CoinDCX 6,single-source,dune-spellbook
+TRX,TPaRk5RJmDjYfUwrE6JcJ91miqUa4xU9PN,CoinDCX,CoinDCX 3,single-source,dune-spellbook
+TRX,TU7BbAsb8t371eMijQeiGXsiLvY1vZbsFs,CoinDCX,CoinDCX 2,single-source,dune-spellbook
+TRX,TVYH5Y4KstUfRNx1ZQbqgdtX1Jw3bMTKtJ,CoinDCX,CoinDCX 13,single-source,dune-spellbook
+TRX,TVayqwydqcX1sEuzmxfXz2fHJcuCNGwYVN,CoinDCX,CoinDCX 12,single-source,dune-spellbook
+TRX,TWQ4PG879vT5Cqu55iMpSy4WhMPdG7bKYr,CoinDCX,CoinDCX 8,single-source,dune-spellbook
+XRP,rBjVFQDVC7WvAZNrpvapfq7MhSUMhj68wa,CoinDCX,CoinDCX 25,single-source,dune-spellbook
+XRP,rGcT3Dpz9Dk3oV7hsDT7Q1s6NRPo9a8iDt,CoinDCX,CoinDCX 21,single-source,dune-spellbook
+XRP,rKa1G2q15ya4Xr3U3LVdEhBpR3H1CUNnQN,CoinDCX,CoinDCX 23,single-source,dune-spellbook
+XRP,rLUpiBeLhUyEzVtBkYE4S9t4zhdybSSARw,CoinDCX,CoinDCX 24,single-source,dune-spellbook
+XRP,rMa4tVPUFTBC7Zzg1BkDwVWPLuE8bbQMX9,CoinDCX,CoinDCX 22,single-source,dune-spellbook
+EVM,0x986ccf5234d9cfbb25246f1a5bfa51f4ccfcb308,CoinSwitch,CoinSwitch Binance Deposit 1,single-source,dune-spellbook
+EVM,0xd0808da05cc71a9f308d330bc9c5c81bbc26fc59,CoinSwitch,CoinSwitch 1,confirmed,etherscan public tag + dune-spellbook
+EVM,0x0389776e4d48384160cd5acde2f61ab9359e757e,WazirX,WazirX 6,single-source,dune-spellbook
+EVM,0x0e293a9e57d22f6ec575b376e3e3bd8e642fd5fc,WazirX,WazirX 1,confirmed,etherscan public tag + dune-spellbook
+EVM,0x196eeecf1a247ed7cadfb39a3125a321f8642aad,WazirX,WazirX 7,single-source,dune-spellbook
+EVM,0x1b9509aeb1fbb605868d21caf2eeb6ac8351264d,WazirX,WazirX 4,single-source,dune-spellbook
+EVM,0x27fd43babfbe83a81d14665b1a6fb8030a60c9b4,WazirX,WazirX 2,operator-confirmed,wazirx.com post-incident report + etherscan + dune-spellbook
+EVM,0x305dcaea67a9d4152e54e68060c89db05fd67a7b,WazirX,WazirX 5,single-source,dune-spellbook
+EVM,0x618ffd1cdabee36ce5992a857cc7463f21272bd7,WazirX,WazirX Withdrawals,confirmed,etherscan public tag + dune-spellbook
+EVM,0x7aeb3314e041153c4f6bbea19abecbce20946fd4,WazirX,WazirX Gas Supplier 1,single-source,dune-spellbook
+EVM,0x7db77e4c967c95a5a9e2ec57ec21788dab481893,WazirX,WazirX Binance Deposit 1,single-source,dune-spellbook
+EVM,0xcdef28fe85ab08a6632c97fd90534666c1ae96a3,WazirX,WazirX 3,single-source,dune-spellbook
+EVM,0xfa54b4085811aef6acf47d51b05fda188deae28b,WazirX,WazirX Deployer,single-source,dune-spellbook
+TRX,TPQqrAEnrWKTefTpgCNzXAGmJuvBqUrk1P,WazirX,WazirX 1,single-source,dune-spellbook
+TRX,TXe3EibZP9jFogwyqLPd3APdwxZbiQBUqi,WazirX,WazirX 2,single-source,dune-spellbook

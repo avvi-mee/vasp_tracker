@@ -7,7 +7,9 @@ from app.api_clients.etherscan import fetch_transactions as fetch_evm, ETH_CHAIN
 from app.api_clients.tronscan import fetch_transactions as fetch_tron
 from app.api_clients.solana import fetch_transactions as fetch_solana
 from app.data.tagpacks import load_labels
+from app.data.indian_vasps import merge_labels, coverage_summary
 from app.data.known_mixers import KNOWN_MIXERS
+from app.evidence.certificate import build_certificate_bundle
 from app.graph.trace import trace_to_nearest_entity
 from app.graph.risk import assess
 from app.data.case_store import init_db, save_case, list_cases
@@ -42,9 +44,11 @@ DEMO_ADDRESSES = {
 }
 
 
-@st.cache_resource(show_spinner="Loading GraphSense TagPack labels (first run only)...")
+@st.cache_resource(show_spinner="Loading address labels (first run only)...")
 def get_labels():
-    return load_labels()
+    """GraphSense for global coverage, our own dataset for Indian exchanges —
+    GraphSense has effectively none, and this tool is for Indian police."""
+    return merge_labels(load_labels())
 
 
 def render_lookup():
@@ -149,6 +153,10 @@ def _render_verdict(result, risk, chain, case_id):
     st.markdown(ui.section_title("Traced path"), unsafe_allow_html=True)
     st.markdown(ui.path_flow(result.path, result.entity_type, result.label), unsafe_allow_html=True)
 
+    if result.deposit:
+        st.markdown(ui.section_title("Deposit address"), unsafe_allow_html=True)
+        st.markdown(ui.deposit_callout(result.deposit), unsafe_allow_html=True)
+
     st.markdown(ui.section_title("Evidence"), unsafe_allow_html=True)
     rows = [
         ui.field_row("Seed address", result.seed_address, mono=True),
@@ -175,6 +183,28 @@ def _render_verdict(result, risk, chain, case_id):
         st.caption(f"{response['status']} — {response['detail']}")
         with st.expander("View full report"):
             st.json(request)
+
+    st.markdown(ui.section_title("Court evidence certificate — s.63 BSA, 2023"),
+                unsafe_allow_html=True)
+    st.caption("Electronic records are inadmissible as secondary evidence without the "
+               "certificate in the Schedule to the Bharatiya Sakshya Adhiniyam, 2023. "
+               "This generates Part A and Part B pre-filled with the trace findings and "
+               "the SHA-256 of the record, leaving every sworn statement blank for the "
+               "officer and expert who must sign it.")
+    case_ref = st.text_input("Case / FIR reference (appears on the certificate)",
+                             placeholder="e.g. FIR 0142/2026, PS Cyber Crime",
+                             key="case_ref")
+    pack, bundle = build_certificate_bundle(chain, result, risk, case_reference=case_ref,
+                                            analyst_note=st.session_state.get("analyst_note", ""))
+    st.markdown("".join([
+        ui.field_row("Record hashed", pack.record_filename, mono=True),
+        ui.field_row("SHA-256", f"<code>{pack.record_sha256}</code>"),
+        ui.field_row("Generated", f"{pack.generated_at_ist} IST"),
+    ]), unsafe_allow_html=True)
+    st.download_button(
+        "⬇ Download evidence pack (record + Part A + Part B + hash report)",
+        data=bundle, file_name=f"s63-evidence-{result.seed_address[:10]}.zip",
+        mime="application/zip", type="primary")
 
 
 def render_dashboard():
@@ -238,8 +268,13 @@ with st.sidebar:
                 f"<div style='font-size:11px;color:{ui.INK_SOFT};font-family:\"IBM Plex Mono\",monospace;"
                 f"margin-bottom:16px'>SIH26182 · MHA / I4C</div>", unsafe_allow_html=True)
     page = st.radio("View", ["Lookup", "Case Dashboard"], label_visibility="collapsed")
+    coverage = coverage_summary()
+    indian = "".join(f"{name} {count}<br>" for name, count in coverage.items())
     st.markdown(f"<div style='margin-top:24px;font-size:11px;color:{ui.INK_SOFT};line-height:1.7'>"
-                f"<b>Live chains</b><br>Ethereum · Polygon · Tron · Solana</div>",
+                f"<b>Live chains</b><br>Ethereum · Polygon · Tron · Solana"
+                f"<div style='margin-top:14px'><b>Indian VASP addresses</b><br>{indian}"
+                f"<span style='opacity:.8'>GraphSense carries almost none of these; "
+                f"this dataset is ours.</span></div></div>",
                 unsafe_allow_html=True)
 
 if page == "Lookup":
