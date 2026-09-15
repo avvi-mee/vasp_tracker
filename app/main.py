@@ -45,15 +45,26 @@ def render_lookup():
         if detected:
             st.session_state["chain_select"] = detected
 
-    col1, col2 = st.columns([3, 1])
-    address = col1.text_input("Wallet address", placeholder="0xF835A0247b0063C04EF22006eBe57c5F11977Cc4",
-                              key="address_input", on_change=_on_address_change)
-    chain = col2.selectbox("Chain", list(CHAINS.keys()), key="chain_select")
+    address = st.text_input("Wallet address", placeholder="0xF835A0247b0063C04EF22006eBe57c5F11977Cc4",
+                            key="address_input", on_change=_on_address_change)
 
-    if address:
-        _, detect_note = detect_chain(address)
+    # No visible chain picker by default — address format auto-detects the chain.
+    # An expander reveals manual override only for the one real ambiguity that
+    # matters: Ethereum/Polygon/BNB Chain share the same 0x-format address, so
+    # format alone can't always know which one you meant.
+    if "chain_select" not in st.session_state:
+        st.session_state["chain_select"] = "Ethereum"
+    detected, detect_note = detect_chain(address) if address else (None, "")
+
+    if address and detected:
+        st.success(f"Detected chain: **{detected}**")
         if detect_note:
-            st.caption(f"🔎 {detect_note}")
+            st.caption(detect_note)
+    elif address:
+        st.warning("Address format not recognized — pick the chain manually below.")
+
+    with st.expander("Not the right chain? Change it manually"):
+        chain = st.selectbox("Chain", list(CHAINS.keys()), key="chain_select")
 
     if st.button("Trace", type="primary"):
         chain_cfg = CHAINS[chain]
