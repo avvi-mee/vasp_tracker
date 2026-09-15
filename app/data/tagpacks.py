@@ -12,6 +12,13 @@ TAGPACKS_DIR = Path(__file__).parent / "graphsense-tagpacks" / "packs"
 HEADER_FIELDS = ("label", "currency", "category", "source", "confidence", "is_cluster_definer", "actor")
 
 
+def _normalize(address: str) -> str:
+    """Hex addresses (0x...) are case-insensitive. Base58 addresses (Tron,
+    Bitcoin) are case-sensitive — lowercasing them would silently break
+    matching. Same rule as app/graph/trace.py, kept in sync."""
+    return address.lower() if address.startswith(("0x", "0X")) else address
+
+
 def load_labels(tagpacks_dir: Path = TAGPACKS_DIR) -> dict[tuple[str, str], dict]:
     """Returns {(currency, address_lowercased): {label, category, source, confidence, is_cluster_definer}}"""
     lookup: dict[tuple[str, str], dict] = {}
@@ -37,7 +44,7 @@ def load_labels(tagpacks_dir: Path = TAGPACKS_DIR) -> dict[tuple[str, str], dict
                 continue
             merged = {**header, **{k: v for k, v in tag.items() if k in HEADER_FIELDS}}
             currency = (merged.get("currency") or "").upper()
-            key = (currency, address.lower())
+            key = (currency, _normalize(address))
             # keep the first match, unless this one is a stronger (cluster-defining) tag
             if key not in lookup or merged.get("is_cluster_definer"):
                 lookup[key] = {
@@ -51,4 +58,4 @@ def load_labels(tagpacks_dir: Path = TAGPACKS_DIR) -> dict[tuple[str, str], dict
 
 
 def lookup_address(lookup: dict, currency: str, address: str) -> dict | None:
-    return lookup.get((currency.upper(), address.lower()))
+    return lookup.get((currency.upper(), _normalize(address)))
