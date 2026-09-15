@@ -7,16 +7,11 @@ every tag inherits, unless a tag overrides a field itself.
 from pathlib import Path
 import yaml
 
+from app.addresses import normalize_address as _normalize
+
 TAGPACKS_DIR = Path(__file__).parent / "graphsense-tagpacks" / "packs"
 
 HEADER_FIELDS = ("label", "currency", "category", "source", "confidence", "is_cluster_definer", "actor")
-
-
-def _normalize(address: str) -> str:
-    """Hex addresses (0x...) are case-insensitive. Base58 addresses (Tron,
-    Bitcoin) are case-sensitive — lowercasing them would silently break
-    matching. Same rule as app/graph/trace.py, kept in sync."""
-    return address.lower() if address.startswith(("0x", "0X")) else address
 
 
 def load_labels(tagpacks_dir: Path = TAGPACKS_DIR) -> dict[tuple[str, str], dict]:

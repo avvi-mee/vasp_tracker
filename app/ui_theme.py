@@ -149,6 +149,40 @@ def field_row(label: str, value: str, mono: bool = False) -> str:
 """
 
 
+def deposit_callout(dep) -> str:
+    """The deposit address is the single most actionable thing on the page —
+    it is what goes in the disclosure request — so it gets its own block
+    rather than a row in the evidence table."""
+    confirmed = dep.is_deposit_address
+    fg, bg = (NAVY, LEDGER_SOFT) if confirmed else (INK_SOFT, "#F1F3F7")
+    heading = ("Deposit address identified" if confirmed
+               else "No deposit address confirmed")
+    points = dep.signals if confirmed else dep.caveats
+    bullets = "".join(
+        f"<li style='margin:3px 0'>{p}</li>" for p in points[:4]
+    )
+    note = (f"<div style='font-size:12.5px;color:{INK_SOFT};margin-top:10px;line-height:1.55'>"
+            f"This address maps to a single customer account at the VASP. Name "
+            f"<i>this</i> address in the disclosure request — naming the exchange "
+            f"alone identifies millions of users.</div>") if confirmed else ""
+    return f"""
+<div style="background:{bg};border:1.5px solid {fg};border-radius:10px;padding:16px 18px;margin:4px 0 18px 0">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600;
+                letter-spacing:.07em;text-transform:uppercase;color:{fg}">{heading}</div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:{INK_SOFT}">
+      confidence {dep.confidence:.0%}</div>
+  </div>
+  <div style="font-family:'IBM Plex Mono',monospace;font-size:15px;font-weight:600;color:{fg};
+              margin:10px 0 4px 0;word-break:break-all">{dep.address}</div>
+  <ul style="margin:8px 0 0 0;padding-left:18px;font-size:12.5px;color:{INK};line-height:1.5">
+    {bullets}
+  </ul>
+  {note}
+</div>
+"""
+
+
 def section_title(text: str) -> str:
     return (f"<div style='font-size:15px;font-weight:700;color:{INK};margin:22px 0 10px 0;"
             f"padding-bottom:6px;border-bottom:1px solid {WIRE}'>{text}</div>")

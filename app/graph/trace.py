@@ -4,8 +4,11 @@ hops. See research/06-clustering-heuristics.md for the deposit-sweep
 heuristic this follows, and the architecture doc for why this is a graph
 search, not single-hop clustering.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import networkx as nx
+
+from app.addresses import normalize_address
+from app.graph.sweep import DepositEvidence, classify_deposit_address
 
 
 @dataclass
@@ -19,6 +22,10 @@ class TraceResult:
     confidence: float
     source: str | None = None
     reason: str | None = None
+    # Set when the trace ends at an exchange and the hop before it behaves like
+    # a deposit address — that address, not the exchange, is what a disclosure
+    # request must name. See app/graph/sweep.py.
+    deposit: DepositEvidence | None = None
 
 
 def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
@@ -28,11 +35,7 @@ def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
     return round(max(0.3, min(0.95, score)), 2)
 
 
-def _normalize(address: str) -> str:
-    """Hex addresses (0x...) are case-insensitive — lowercase for consistent
-    matching. Base58 addresses (Tron, Bitcoin) ARE case-sensitive — leave
-    them exactly as given, lowercasing would silently corrupt them."""
-    return address.lower() if address.startswith(("0x", "0X")) else address
+_normalize = normalize_address  # kept as a local alias; the rule lives in app/addresses.py
 
 
 def trace_to_nearest_entity(
@@ -52,6 +55,7 @@ def trace_to_nearest_entity(
     g = nx.DiGraph()
     g.add_node(seed_address)
     current = seed_address
+    prev_txs: list[dict] = []  # transactions of path[-2], reused for sweep analysis
 
     for hop in range(max_hops + 1):
         mixer_label = mixers_lookup.get((currency.upper(), current))
@@ -62,9 +66,14 @@ def trace_to_nearest_entity(
         label_rec = lookup_address(labels_lookup, currency, current)
         if label_rec:
             entity_type = label_rec.get("category") or "exchange"
+            # The hop immediately before an exchange is the candidate deposit
+            # address — the one that maps to a single KYC'd account.
+            deposit = None
+            if hop >= 1 and "exchange" in entity_type.lower() and prev_txs:
+                deposit = classify_deposit_address(path[-2], prev_txs, current)
             return TraceResult(seed_address, path, g, hop, entity_type, label_rec["label"],
                                 confidence=_confidence(hop, label_rec.get("is_cluster_definer", False)),
-                                source=label_rec.get("source"))
+                                source=label_rec.get("source"), deposit=deposit)
 
         if hop == max_hops:
             break  # don't fetch one more hop just to discard it
@@ -79,6 +88,7 @@ def trace_to_nearest_entity(
         next_addr = _normalize(dominant["to_addr"])
         g.add_edge(current, next_addr, tx_hash=dominant["tx_hash"], value_wei=dominant["value_wei"])
         path.append(next_addr)
+        prev_txs = txs  # belong to `current`, which is now path[-2]
         current = next_addr
 
     return TraceResult(seed_address, path, g, max_hops, "unknown", None,
