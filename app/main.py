@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 from app.api_clients.etherscan import fetch_transactions as fetch_evm, ETH_CHAIN_ID, POLYGON_CHAIN_ID
 from app.api_clients.tronscan import fetch_transactions as fetch_tron
+from app.api_clients.solana import fetch_transactions as fetch_solana
 from app.data.tagpacks import load_labels
 from app.data.known_mixers import KNOWN_MIXERS
 from app.graph.trace import trace_to_nearest_entity
@@ -23,9 +24,9 @@ CHAINS = {
     "Polygon": {"enabled": True, "currency": "MATIC",
                 "fetch": lambda a: fetch_evm(a, chainid=POLYGON_CHAIN_ID, asset_type="MATIC")},
     "Tron": {"enabled": True, "currency": "TRX", "fetch": lambda a: fetch_tron(a)},
+    "Solana": {"enabled": True, "currency": "SOL", "fetch": lambda a: fetch_solana(a)},
     "Bitcoin — coming soon": {"enabled": False},
     "BNB Chain — coming soon": {"enabled": False},
-    "Solana — coming soon": {"enabled": False},
 }
 
 
@@ -47,7 +48,7 @@ def render_lookup():
         if not chain_cfg["enabled"]:
             st.warning(f"{chain} isn't wired up in this build yet — the API-client pattern "
                        f"extends cleanly to it (see the roadmap), just not built yet. "
-                       f"Try Ethereum, Polygon, or Tron.")
+                       f"Try Ethereum, Polygon, Tron, or Solana.")
             return
         if not address:
             st.error("Enter an address first.")
