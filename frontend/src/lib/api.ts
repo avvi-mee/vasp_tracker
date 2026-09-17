@@ -37,6 +37,7 @@ export interface Candidate {
   asset: [string, string] | null;
   deposit: DepositEvidence | null;
   value_share: number;
+  merged_path_count: number;
 }
 
 export interface Edge {
@@ -61,6 +62,7 @@ export interface TraceResultJson {
   deposit: DepositEvidence | null;
   candidates: Candidate[];
   edges: Edge[];
+  caveats: string[];
 }
 
 export interface RiskAssessment {

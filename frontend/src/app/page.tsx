@@ -29,7 +29,13 @@ export default function Home() {
   const [certBusy, setCertBusy] = useState(false);
 
   useEffect(() => {
-    getChains().then(setChains).catch(() => {});
+    getChains()
+      .then(setChains)
+      .catch(() =>
+        setError(
+          "Can't reach the API — is it running? (uvicorn app.api.main:app --host 127.0.0.1 --port 8000)"
+        )
+      );
   }, []);
 
   async function runTrace(e: React.FormEvent) {
@@ -123,6 +129,14 @@ export default function Home() {
           <div className="mt-3">
             <RiskBadge risk={result.risk} />
           </div>
+
+          {result.trace.caveats.length > 0 && (
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              {result.trace.caveats.map((c, i) => (
+                <div key={i}>{c}</div>
+              ))}
+            </div>
+          )}
 
           <SectionTitle>Traced path</SectionTitle>
           <PathFlow

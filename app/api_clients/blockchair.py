@@ -64,7 +64,11 @@ def fetch_transactions(address: str, chain: str = "bitcoin", api_key: str | None
         candidates = [
             o for o in outputs
             if isinstance(o, dict)
-            and o.get("recipient") != address
+            # Case-insensitive here only to decide "is this a change output
+            # back to the querying address" — the recipient value actually
+            # stored below stays exactly as Blockchair returned it, case and
+            # all, since that's what must survive into normalize_address().
+            and (o.get("recipient") or "").lower() != address.lower()
             and (o.get("value") or 0) > 0
         ]
         if not candidates:

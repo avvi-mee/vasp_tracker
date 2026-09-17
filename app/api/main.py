@@ -7,11 +7,15 @@ contract for all three consumers.
 
 Run with: uvicorn app.api.main:app --reload
 """
+import logging
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+logger = logging.getLogger("vasp_trace.api")
 
 from app.chains import CHAINS
 from app.data.case_store import init_db, list_cases, save_case
@@ -49,7 +53,7 @@ def _labels() -> dict:
 
 
 class TraceRequest(BaseModel):
-    address: str
+    address: str = Field(min_length=1, description="Wallet address to trace")
     chain: str | None = None  # omit to auto-detect from address format
     case_reference: str = ""
     analyst_note: str = ""
@@ -62,8 +66,8 @@ def _run_trace(req: TraceRequest):
         chain = detected or "Ethereum"
     chain_cfg = CHAINS.get(chain)
     if not chain_cfg or not chain_cfg["enabled"]:
-        raise HTTPException(400, f"{chain} isn't wired up in this build yet — "
-                                 f"try Ethereum, Polygon, Tron, or Solana.")
+        live = ", ".join(name for name, cfg in CHAINS.items() if cfg["enabled"])
+        raise HTTPException(400, f"{chain} isn't wired up in this build yet — try {live}.")
     try:
         result = trace_to_nearest_entity(
             seed_address=req.address, currency=chain_cfg["currency"],
@@ -104,7 +108,10 @@ def trace(req: TraceRequest):
         init_db()
         case_id = save_case(chain_cfg["currency"], result, risk)
     except Exception:
-        pass
+        # Best-effort, same posture as the Streamlit UI — a missing
+        # DATABASE_URL shouldn't fail the trace. But swallowing it silently
+        # would hide a real bug in save_case just as easily, so log it.
+        logger.exception("Case save failed for %s", result.seed_address)
 
     return {
         "chain": chain,

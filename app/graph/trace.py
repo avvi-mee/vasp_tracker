@@ -41,6 +41,9 @@ class Candidate:
     asset: tuple[str, str] | None
     deposit: DepositEvidence | None
     value_share: float  # 0..1, how much of the seed's value reached this terminal
+    # >1 when independent paths converged on the same labeled entity — their
+    # value_share is summed into one candidate rather than listed twice.
+    merged_path_count: int = 1
 
 
 @dataclass
@@ -66,6 +69,10 @@ class TraceResult:
     # top-level fields — a plain single-path trace is just the case where this
     # list has one entry.
     candidates: list[Candidate] = field(default_factory=list)
+    # Honesty notes about the search itself — e.g. branches dropped by the
+    # frontier cap — distinct from Candidate.reason, which explains one path's
+    # own outcome. Empty for the common case where nothing was dropped.
+    caveats: list[str] = field(default_factory=list)
 
 
 def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
@@ -109,6 +116,7 @@ def trace_to_nearest_entity(
 
     frontier = [_Branch([seed_address], [], None, 1.0)]
     terminals: list[Candidate] = []
+    pruned_count = 0
 
     for hop in range(max_hops + 1):
         next_frontier: list[_Branch] = []
@@ -200,6 +208,7 @@ def trace_to_nearest_entity(
             break
         if len(frontier) > MAX_ACTIVE_BRANCHES:
             frontier.sort(key=lambda b: b.value_share, reverse=True)
+            pruned_count += len(frontier) - MAX_ACTIVE_BRANCHES
             frontier = frontier[:MAX_ACTIVE_BRANCHES]
 
     if not terminals:
@@ -207,12 +216,44 @@ def trace_to_nearest_entity(
             [seed_address], max_hops, "unknown", None, 0.0, None,
             f"hop limit ({max_hops}) reached with no match", None, None, 1.0))
 
+    # Independent branches sometimes converge on the same labeled entity
+    # (a diamond in the transaction graph) — list that once, with its value
+    # shares summed, rather than as separate rows an investigator would have
+    # to notice and add up themselves. Unlabeled terminals (unknown/dead-end)
+    # are never merged: two different unresolved addresses are not "the same
+    # entity" just because both say "unknown".
+    merged: dict[tuple[str, str], Candidate] = {}
+    unmerged: list[Candidate] = []
+    for c in terminals:
+        if c.label is None:
+            unmerged.append(c)
+            continue
+        key = (c.entity_type, c.label)
+        existing = merged.get(key)
+        if existing is None:
+            merged[key] = c
+        else:
+            winner = c if c.hop_count < existing.hop_count else existing  # the closer path is the representative
+            merged[key] = Candidate(
+                winner.path, winner.hop_count, winner.entity_type, winner.label,
+                winner.confidence, winner.source, winner.reason, winner.asset, winner.deposit,
+                existing.value_share + c.value_share, existing.merged_path_count + c.merged_path_count,
+            )
+    terminals = list(merged.values()) + unmerged
+
     terminals.sort(key=lambda c: (c.value_share, c.confidence), reverse=True)
     best = terminals[0]
+
+    caveats = []
+    if pruned_count:
+        caveats.append(
+            f"{pruned_count} branch(es) below the top-{MAX_ACTIVE_BRANCHES} by value share were "
+            f"not followed — this trace's coverage is not exhaustive, and a deliberately small "
+            f"split (structuring) is exactly what this limit could miss.")
 
     return TraceResult(
         seed_address=seed_address, path=best.path, graph=g, hop_count=best.hop_count,
         entity_type=best.entity_type, label=best.label, confidence=best.confidence,
         source=best.source, reason=best.reason, asset=best.asset, deposit=best.deposit,
-        candidates=terminals,
+        candidates=terminals, caveats=caveats,
     )

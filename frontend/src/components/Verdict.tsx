@@ -117,6 +117,7 @@ export function CandidateList({ candidates }: { candidates: Candidate[] }) {
             </span>
             <span className="text-xs text-ink-soft">
               {c.entity_type} · {c.hop_count} hop{c.hop_count === 1 ? "" : "s"}
+              {c.merged_path_count > 1 && ` · ${c.merged_path_count} converging paths`}
             </span>
           </div>
           <div className="font-mono text-xs font-semibold text-ink">
