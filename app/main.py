@@ -3,9 +3,7 @@ import json
 import streamlit as st
 from dotenv import load_dotenv
 
-from app.api_clients.etherscan import fetch_transactions as fetch_evm, ETH_CHAIN_ID, POLYGON_CHAIN_ID
-from app.api_clients.tronscan import fetch_transactions as fetch_tron
-from app.api_clients.solana import fetch_transactions as fetch_solana
+from app.chains import CHAINS
 from app.data.tagpacks import load_labels
 from app.data.indian_vasps import merge_labels, coverage_summary
 from app.data.known_mixers import KNOWN_MIXERS
@@ -20,19 +18,6 @@ from app import ui_theme as ui
 load_dotenv()
 st.set_page_config(page_title="VASP Trace — SIH26182", page_icon="🔗", layout="wide")
 st.markdown(ui.GLOBAL_CSS, unsafe_allow_html=True)
-
-# Chain adapter registry — enabled chains carry a currency code + fetch function
-# with the same normalized-transaction interface (see api_clients/*.py).
-CHAINS = {
-    "Ethereum": {"enabled": True, "currency": "ETH",
-                 "fetch": lambda a: fetch_evm(a, chainid=ETH_CHAIN_ID, asset_type="ETH")},
-    "Polygon": {"enabled": True, "currency": "MATIC",
-                "fetch": lambda a: fetch_evm(a, chainid=POLYGON_CHAIN_ID, asset_type="MATIC")},
-    "Tron": {"enabled": True, "currency": "TRX", "fetch": lambda a: fetch_tron(a)},
-    "Solana": {"enabled": True, "currency": "SOL", "fetch": lambda a: fetch_solana(a)},
-    "Bitcoin — coming soon": {"enabled": False},
-    "BNB Chain — coming soon": {"enabled": False},
-}
 
 DEMO_ADDRESSES = {
     "— pick a verified example —": "",
@@ -270,8 +255,9 @@ with st.sidebar:
     page = st.radio("View", ["Lookup", "Case Dashboard"], label_visibility="collapsed")
     coverage = coverage_summary()
     indian = "".join(f"{name} {count}<br>" for name, count in coverage.items())
+    live_chains = " · ".join(name for name, cfg in CHAINS.items() if cfg["enabled"])
     st.markdown(f"<div style='margin-top:24px;font-size:11px;color:{ui.INK_SOFT};line-height:1.7'>"
-                f"<b>Live chains</b><br>Ethereum · Polygon · Tron · Solana"
+                f"<b>Live chains</b><br>{live_chains}"
                 f"<div style='margin-top:14px'><b>Indian VASP addresses</b><br>{indian}"
                 f"<span style='opacity:.8'>GraphSense carries almost none of these; "
                 f"this dataset is ours.</span></div></div>",

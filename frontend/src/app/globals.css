@@ -1,0 +1,47 @@
+@import "tailwindcss";
+/* Fonts are loaded via next/font/google in layout.tsx (self-hosted, no
+   render-blocking external request) — see --font-sans/--font-mono below. */
+
+/* Ported 1:1 from app/ui_theme.py so the Next.js console and the Streamlit
+   fallback read as the same product, not two different tools. */
+:root {
+  --color-navy: #1b2a4a;
+  --color-gold: #8c661f;
+  --color-ink: #14181f;
+  --color-ink-soft: #4b5568;
+  --color-wire: #d3d7e0;
+  --color-paper-raised: #ffffff;
+  --color-ledger-soft: #eaeef6;
+
+  --color-risk-high-fg: #8c3420;
+  --color-risk-high-bg: #fdeceb;
+  --color-risk-medium-fg: #8c661f;
+  --color-risk-medium-bg: #fbf3e4;
+  --color-risk-low-fg: #4b5568;
+  --color-risk-low-bg: #f1f3f7;
+  --color-risk-none-fg: #256b47;
+  --color-risk-none-bg: #eaf5ef;
+
+  --background: #f7f8fb;
+  --foreground: var(--color-ink);
+}
+
+@theme inline {
+  --color-navy: var(--color-navy);
+  --color-gold: var(--color-gold);
+  --color-ink: var(--color-ink);
+  --color-ink-soft: var(--color-ink-soft);
+  --color-wire: var(--color-wire);
+  --color-paper-raised: var(--color-paper-raised);
+  --color-ledger-soft: var(--color-ledger-soft);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, monospace;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

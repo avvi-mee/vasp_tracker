@@ -27,12 +27,12 @@ def test_detects_solana_address():
 
 def test_detects_bitcoin_legacy_address():
     chain, note = detect_chain("1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa")  # Bitcoin genesis address
-    assert chain == "Bitcoin — coming soon"
+    assert chain == "Bitcoin"
 
 
 def test_detects_bitcoin_bech32_address():
     chain, note = detect_chain("bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq")
-    assert chain == "Bitcoin — coming soon"
+    assert chain == "Bitcoin"
 
 
 def test_unrecognized_format_returns_none():

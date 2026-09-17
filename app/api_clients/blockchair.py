@@ -64,7 +64,7 @@ def fetch_transactions(address: str, chain: str = "bitcoin", api_key: str | None
         candidates = [
             o for o in outputs
             if isinstance(o, dict)
-            and (o.get("recipient") or "").lower() != address.lower()
+            and o.get("recipient") != address
             and (o.get("value") or 0) > 0
         ]
         if not candidates:
@@ -75,9 +75,17 @@ def fetch_transactions(address: str, chain: str = "bitcoin", api_key: str | None
             "tx_hash": tx_hash,
             "block_number": detail.get("transaction", {}).get("block_id"),
             "timestamp": tx.get("time"),
-            "from_addr": address.lower(),
-            "to_addr": dominant["recipient"].lower(),
-            "value_wei": dominant["value"],
+            # Bitcoin addresses are base58/bech32 and case-sensitive — do NOT
+            # .lower() them, that silently corrupts legacy (1.../3...)
+            # addresses into ones that will never match a label again (see
+            # app/addresses.py and test_base58_addresses_are_not_lowercased).
+            "from_addr": address,
+            "to_addr": dominant["recipient"],
+            "value_wei": dominant["value"],  # satoshis
             "asset_type": "BTC",
+            "asset_symbol": "BTC",
+            "asset_contract": "",
+            "decimals": 8,  # 1 BTC = 1e8 satoshis, not the EVM-default 1e18
+            "transfer_type": "native",
         })
     return normalized

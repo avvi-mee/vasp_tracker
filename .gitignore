@@ -5,3 +5,4 @@ __pycache__/
 .pytest_cache/
 *.db
 app/data/graphsense-tagpacks/
+app/data/ofac-sanctioned-digital-currency-addresses/

@@ -31,7 +31,7 @@ def detect_chain(address: str) -> tuple[str | None, str]:
     if TRON_PATTERN.match(address):
         return "Tron", "Tron-format address (starts with T)."
     if BITCOIN_PATTERN.match(address):
-        return "Bitcoin — coming soon", "Bitcoin-format address — detected, but this chain isn't wired up yet."
+        return "Bitcoin", "Bitcoin-format address, via Blockchair (dominant-output following, no CIOH clustering yet)."
     if SOLANA_PATTERN.match(address):
         return "Solana", "Base58 address, best guess Solana (no fixed prefix to be fully certain)."
     return None, "Address format not recognized — pick the chain manually."
