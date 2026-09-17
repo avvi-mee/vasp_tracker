@@ -17,6 +17,8 @@ request were cut from 10,000 to 1,000, and internal-transactions-by-block-range
 was removed from free (the by-address form used here still works).
 """
 import os
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 
 BASE_URL = "https://api.etherscan.io/v2/api"
@@ -94,9 +96,23 @@ def fetch_transactions(address: str, api_key: str | None = None, chainid: int = 
     if not api_key:
         raise RuntimeError("Set ETHERSCAN_API_KEY in your .env file (see .env.example).")
 
+    # Three independent endpoint calls merged into one normalized list — a
+    # single address's fetch was taking ~9s because these ran one after
+    # another (measured live). They don't depend on each other, so fetch
+    # them concurrently instead; ~3s (the slowest one), not the sum of three.
+    actions = ["txlist"]
+    if include_tokens:
+        actions.append("tokentx")
+    if include_internal:
+        actions.append("txlistinternal")
+
+    with ThreadPoolExecutor(max_workers=len(actions)) as pool:
+        pages = dict(zip(actions, pool.map(
+            lambda action: _paged(action, address, chainid, api_key, max_records), actions)))
+
     transfers: list[dict] = []
 
-    for tx in _paged("txlist", address, chainid, api_key, max_records):
+    for tx in pages["txlist"]:
         # A failed transaction moved no value; counting it would inflate the
         # forwarding ratios sweep.py computes.
         if tx.get("isError") == "1":
@@ -106,7 +122,7 @@ def fetch_transactions(address: str, api_key: str | None = None, chainid: int = 
                           "decimals": NATIVE_DECIMALS, "transfer_type": "native"})
 
     if include_tokens:
-        for tx in _paged("tokentx", address, chainid, api_key, max_records):
+        for tx in pages["tokentx"]:
             transfers.append({
                 **_base_fields(tx),
                 "asset_type": asset_type,  # the chain's native ticker, kept for back-compat
@@ -118,7 +134,7 @@ def fetch_transactions(address: str, api_key: str | None = None, chainid: int = 
             })
 
     if include_internal:
-        for tx in _paged("txlistinternal", address, chainid, api_key, max_records):
+        for tx in pages["txlistinternal"]:
             if tx.get("isError") == "1":
                 continue
             transfers.append({**_base_fields(tx), "asset_type": asset_type,

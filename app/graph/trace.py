@@ -14,6 +14,16 @@ from app.addresses import normalize_address
 from app.assets import amount, asset_key, dominant_asset
 from app.graph.sweep import DepositEvidence, classify_deposit_address
 
+# ponytail: branches within a hop ARE independent I/O and parallelizing their
+# fetches was tried here — reverted. Each chain client (etherscan.py,
+# tronscan.py) already fans a single address's own fetch out across 2-3
+# endpoints concurrently, which is what actually cut per-address latency
+# ~8x. Stacking cross-branch concurrency on top of that multiplied requests
+# past Etherscan's real limit and live-broke a trace ("Max calls per sec
+# rate limit reached (3/sec)") — caught by testing against the real API,
+# not assumed safe. Revisit with a real shared rate limiter (per the
+# already-deferred Redis plan) before adding this back.
+
 # A destination carrying less than this share of a branch's outgoing value in
 # the followed asset is dust for tracing purposes — always keep the single
 # biggest edge regardless, so a branch never dead-ends solely because every
@@ -120,6 +130,7 @@ def trace_to_nearest_entity(
 
     for hop in range(max_hops + 1):
         next_frontier: list[_Branch] = []
+        needs_fetch: list[_Branch] = []
 
         for branch in frontier:
             current = branch.path[-1]
@@ -155,6 +166,10 @@ def trace_to_nearest_entity(
                     branch.followed_asset, None, branch.value_share))
                 continue
 
+            needs_fetch.append(branch)
+
+        for branch in needs_fetch:
+            current = branch.path[-1]
             txs = fetch_transactions_fn(current)
             outgoing = [t for t in txs
                         if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]

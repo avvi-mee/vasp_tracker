@@ -19,6 +19,8 @@ crash. An API key is effectively required for reliable access since Aug 2025;
 unauthenticated calls work but are tightly rate-limited (~3 req/sec) and 429.
 """
 import os
+from concurrent.futures import ThreadPoolExecutor
+
 import requests
 
 BASE_URL = "https://apilist.tronscanapi.com/api"
@@ -131,17 +133,28 @@ def fetch_transactions(address: str, api_key: str | None = None,
     use 6 decimals here, but other TRC20 tokens do not.
     """
     headers = _headers(api_key)
-    transfers = _native(_paged("transaction", address, headers, max_records))
-    if include_tokens:
-        # Live-verified with a real key: /api/token_trc20/transfers silently
-        # ignores `address` and returns an unrelated global feed instead of
-        # erroring — it must be scoped with `relatedAddress`. Confirmed by
-        # direct comparison: `address=X` returned transfers between other
-        # wallets entirely; `relatedAddress=X` correctly returned X's own
-        # transfers, tagged by Tronscan itself (e.g. "Binance-Hot 11"). This
-        # was silently returning noise instead of the queried address's USDT
-        # activity — the exact data the Tron adapter exists to see.
-        transfers += _trc20(_paged("token_trc20/transfers", address, headers, max_records,
-                                   address_param="relatedAddress"))
+
+    # Two independent endpoints -- fetch concurrently rather than one after
+    # the other, same fix and same reasoning as etherscan.py's three-endpoint
+    # merge (measured there: ~9s sequential vs. ~3s concurrent for one address).
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        native_future = pool.submit(_paged, "transaction", address, headers, max_records)
+        trc20_future = (
+            pool.submit(_paged, "token_trc20/transfers", address, headers, max_records,
+                       address_param="relatedAddress")
+            if include_tokens else None
+        )
+        transfers = _native(native_future.result())
+        if trc20_future is not None:
+            # Live-verified with a real key: /api/token_trc20/transfers silently
+            # ignores `address` and returns an unrelated global feed instead of
+            # erroring — it must be scoped with `relatedAddress`. Confirmed by
+            # direct comparison: `address=X` returned transfers between other
+            # wallets entirely; `relatedAddress=X` correctly returned X's own
+            # transfers, tagged by Tronscan itself (e.g. "Binance-Hot 11"). This
+            # was silently returning noise instead of the queried address's USDT
+            # activity — the exact data the Tron adapter exists to see.
+            transfers += _trc20(trc20_future.result())
+
     transfers.sort(key=lambda t: (t.get("timestamp") or 0, t["tx_hash"]))
     return transfers
