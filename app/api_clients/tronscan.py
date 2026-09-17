@@ -35,7 +35,8 @@ def _headers(api_key: str | None) -> dict:
     return {"TRON-PRO-API-KEY": api_key} if api_key else {}
 
 
-def _paged(path: str, address: str, headers: dict, max_records: int) -> list[dict]:
+def _paged(path: str, address: str, headers: dict, max_records: int,
+          address_param: str = "address") -> list[dict]:
     """Page through a Tronscan list endpoint, honouring its start+limit ceiling."""
     collected: list[dict] = []
     start = 0
@@ -43,7 +44,7 @@ def _paged(path: str, address: str, headers: dict, max_records: int) -> list[dic
         limit = min(PAGE_SIZE, max_records - len(collected), MAX_OFFSET - start)
         resp = requests.get(f"{BASE_URL}/{path}", headers=headers, timeout=20, params={
             "sort": "-timestamp", "count": "true", "limit": limit,
-            "start": start, "address": address,
+            "start": start, address_param: address,
         })
         resp.raise_for_status()
         payload = resp.json()
@@ -121,6 +122,15 @@ def fetch_transactions(address: str, api_key: str | None = None,
     headers = _headers(api_key)
     transfers = _native(_paged("transaction", address, headers, max_records))
     if include_tokens:
-        transfers += _trc20(_paged("token_trc20/transfers", address, headers, max_records))
+        # Live-verified with a real key: /api/token_trc20/transfers silently
+        # ignores `address` and returns an unrelated global feed instead of
+        # erroring — it must be scoped with `relatedAddress`. Confirmed by
+        # direct comparison: `address=X` returned transfers between other
+        # wallets entirely; `relatedAddress=X` correctly returned X's own
+        # transfers, tagged by Tronscan itself (e.g. "Binance-Hot 11"). This
+        # was silently returning noise instead of the queried address's USDT
+        # activity — the exact data the Tron adapter exists to see.
+        transfers += _trc20(_paged("token_trc20/transfers", address, headers, max_records,
+                                   address_param="relatedAddress"))
     transfers.sort(key=lambda t: (t.get("timestamp") or 0, t["tx_hash"]))
     return transfers
