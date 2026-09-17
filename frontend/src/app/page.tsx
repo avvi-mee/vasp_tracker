@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import {
   type ChainInfo,
   type TraceResponse,
@@ -31,8 +32,9 @@ export default function Home() {
 }
 
 function HomeContent({ officer }: { officer: Officer }) {
+  const searchParams = useSearchParams();
   const [chains, setChains] = useState<Record<string, ChainInfo>>({});
-  const [address, setAddress] = useState("");
+  const [address, setAddress] = useState(() => searchParams.get("address") ?? "");
   const [chain, setChain] = useState<string>("");
   const [caseReference, setCaseReference] = useState("");
   const [loading, setLoading] = useState(false);
@@ -60,11 +62,15 @@ function HomeContent({ officer }: { officer: Officer }) {
 
   async function runTrace(e: React.FormEvent) {
     e.preventDefault();
-    if (!address.trim()) return;
+    await runTraceFor(address);
+  }
+
+  async function runTraceFor(addr: string) {
+    if (!addr.trim()) return;
     setLoading(true);
     setError(null);
     try {
-      const res = await traceWallet({ address: address.trim(), chain: chain || undefined });
+      const res = await traceWallet({ address: addr.trim(), chain: chain || undefined });
       setResult(res);
       setActiveAsset(null);
       setSelection(null);
@@ -76,6 +82,14 @@ function HomeContent({ officer }: { officer: Officer }) {
       setLoading(false);
     }
   }
+
+  // Arrived via the Dashboard's quick-lookup (?address=...) -- trace it
+  // immediately rather than making the officer paste it again and click.
+  useEffect(() => {
+    const fromQuery = searchParams.get("address");
+    if (fromQuery) runTraceFor(fromQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleCertificate() {
     if (!address.trim()) return;
