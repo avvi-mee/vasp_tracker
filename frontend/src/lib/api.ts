@@ -47,6 +47,19 @@ export interface Edge {
   value_wei: number | string | null;
   amount: number | null;
   asset: string | null;
+  timestamp: number | null;
+  block_number: number | null;
+}
+
+export interface ExposureCategory {
+  category: string;
+  label: string | null;
+  value_share: number;
+}
+
+export interface ExposureBreakdown {
+  direct: ExposureCategory[];
+  indirect: ExposureCategory[];
 }
 
 export interface TraceResultJson {
@@ -63,6 +76,7 @@ export interface TraceResultJson {
   candidates: Candidate[];
   edges: Edge[];
   caveats: string[];
+  exposure: ExposureBreakdown;
 }
 
 export interface RiskAssessment {

@@ -198,7 +198,8 @@ def trace_to_nearest_entity(
             for dest, dest_amount in material:
                 edge = edge_for_dest[dest]
                 g.add_edge(current, dest, tx_hash=edge["tx_hash"], value_wei=edge["value_wei"],
-                           amount=amount(edge), asset=followed_asset[0] if followed_asset else None)
+                           amount=amount(edge), asset=followed_asset[0] if followed_asset else None,
+                           timestamp=edge.get("timestamp"), block_number=edge.get("block_number"))
                 next_frontier.append(_Branch(
                     branch.path + [dest], txs, followed_asset,
                     branch.value_share * (dest_amount / total)))

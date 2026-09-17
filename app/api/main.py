@@ -24,6 +24,7 @@ from app.data.known_mixers import KNOWN_MIXERS
 from app.data.tagpacks import load_labels
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
+from app.graph.exposure import compute_exposure
 from app.graph.risk import assess
 from app.graph.trace import trace_to_nearest_entity
 from app.sahyog.gateway import build_disclosure_request
@@ -84,15 +85,17 @@ def _edges(result) -> list[dict]:
     return [
         {"from": src, "to": dst, "tx_hash": edge.get("tx_hash"),
          "value_wei": edge.get("value_wei"), "amount": edge.get("amount"),
-         "asset": edge.get("asset")}
+         "asset": edge.get("asset"), "timestamp": edge.get("timestamp"),
+         "block_number": edge.get("block_number")}
         for src, dst, edge in result.graph.edges(data=True)
     ]
 
 
-def _trace_json(result) -> dict:
+def _trace_json(result, currency: str) -> dict:
     payload = _jsonable(result)
     payload.pop("graph", None)  # str(DiGraph) is noise, not data
     payload["edges"] = _edges(result)
+    payload["exposure"] = _jsonable(compute_exposure(result, currency, _labels(), KNOWN_MIXERS))
     return payload
 
 
@@ -116,7 +119,7 @@ def trace(req: TraceRequest):
     return {
         "chain": chain,
         "case_id": case_id,
-        "trace": _trace_json(result),
+        "trace": _trace_json(result, chain_cfg["currency"]),
         "risk": _jsonable(risk),
         "sahyog_draft": build_disclosure_request(chain, result, risk, analyst_note=req.analyst_note),
     }

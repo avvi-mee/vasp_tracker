@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   type ChainInfo,
   type TraceResponse,
@@ -17,6 +17,11 @@ import {
   SectionTitle,
   StatTile,
 } from "@/components/Verdict";
+import { InvestigationGraph, type GraphSelection } from "@/components/InvestigationGraph";
+import { ExposureWheel } from "@/components/ExposureWheel";
+import { TransactionsTable } from "@/components/TransactionsTable";
+import { DetailDrawer } from "@/components/DetailDrawer";
+import { entityPlainLabel } from "@/lib/entityColors";
 
 export default function Home() {
   const [chains, setChains] = useState<Record<string, ChainInfo>>({});
@@ -27,6 +32,14 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TraceResponse | null>(null);
   const [certBusy, setCertBusy] = useState(false);
+  const [tab, setTab] = useState<"graph" | "transactions">("graph");
+  const [activeAsset, setActiveAsset] = useState<string | null>(null);
+  const [selection, setSelection] = useState<GraphSelection | null>(null);
+
+  const assets = useMemo(
+    () => Array.from(new Set((result?.trace.candidates ?? []).map((c) => c.asset?.[0]).filter(Boolean))) as string[],
+    [result]
+  );
 
   useEffect(() => {
     getChains()
@@ -46,6 +59,9 @@ export default function Home() {
     try {
       const res = await traceWallet({ address: address.trim(), chain: chain || undefined });
       setResult(res);
+      setActiveAsset(null);
+      setSelection(null);
+      setTab("graph");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Trace failed");
       setResult(null);
@@ -71,7 +87,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
+    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
       <header className="mb-8">
         <div className="text-xl font-bold text-navy">VASP Trace</div>
         <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
@@ -117,7 +133,7 @@ export default function Home() {
         <div className="mt-8">
           <SectionTitle>Verdict</SectionTitle>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Entity type" value={result.trace.entity_type} />
+            <StatTile label="Reached" value={entityPlainLabel(result.trace.entity_type)} />
             <StatTile
               label="Confidence"
               value={result.trace.confidence ? `${(result.trace.confidence * 100).toFixed(0)}%` : "—"}
@@ -144,6 +160,52 @@ export default function Home() {
             entityType={result.trace.entity_type}
             label={result.trace.label}
           />
+
+          {(result.trace.exposure.direct.length > 0 || result.trace.exposure.indirect.length > 0) && (
+            <>
+              <SectionTitle>Exposure</SectionTitle>
+              <ExposureWheel direct={result.trace.exposure.direct} indirect={result.trace.exposure.indirect} />
+            </>
+          )}
+
+          <SectionTitle>Investigation</SectionTitle>
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex gap-2 text-xs">
+              <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
+                Graph
+              </TabButton>
+              <TabButton active={tab === "transactions"} onClick={() => setTab("transactions")}>
+                Transactions
+              </TabButton>
+            </div>
+            {assets.length > 1 && (
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <AssetChip active={activeAsset === null} onClick={() => setActiveAsset(null)}>
+                  All assets
+                </AssetChip>
+                {assets.map((a) => (
+                  <AssetChip key={a} active={activeAsset === a} onClick={() => setActiveAsset(a)}>
+                    {a}
+                  </AssetChip>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {tab === "graph" ? (
+            <InvestigationGraph
+              seedAddress={result.trace.seed_address}
+              candidates={result.trace.candidates}
+              edges={result.trace.edges}
+              activeAsset={activeAsset}
+              onSelect={setSelection}
+            />
+          ) : (
+            <TransactionsTable
+              edges={result.trace.edges}
+              onSelect={(edge) => setSelection({ kind: "edge", edge })}
+            />
+          )}
 
           {result.trace.candidates.length > 1 && (
             <>
@@ -196,6 +258,36 @@ export default function Home() {
           </div>
         </div>
       )}
+
+      <DetailDrawer
+        selection={selection}
+        candidates={result?.trace.candidates ?? []}
+        onClose={() => setSelection(null)}
+      />
     </main>
+  );
+}
+
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded px-3 py-1.5 font-semibold ${active ? "bg-navy text-white" : "bg-ledger-soft text-ink-soft"}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AssetChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full border px-2.5 py-1 ${
+        active ? "border-gold bg-gold/10 text-gold" : "border-wire text-ink-soft"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

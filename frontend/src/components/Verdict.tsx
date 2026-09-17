@@ -1,18 +1,11 @@
 import type { Candidate, DepositEvidence, RiskAssessment } from "@/lib/api";
+import { entityColor, entityPlainLabel } from "@/lib/entityColors";
 
 const RISK_STYLES: Record<string, { fg: string; bg: string; label: string }> = {
   high: { fg: "var(--color-risk-high-fg)", bg: "var(--color-risk-high-bg)", label: "HIGH RISK" },
   medium: { fg: "var(--color-risk-medium-fg)", bg: "var(--color-risk-medium-bg)", label: "MEDIUM RISK" },
   low: { fg: "var(--color-risk-low-fg)", bg: "var(--color-risk-low-bg)", label: "LOW RISK" },
   none: { fg: "var(--color-risk-none-fg)", bg: "var(--color-risk-none-bg)", label: "NO RISK FLAG" },
-};
-
-const ENTITY_COLOR: Record<string, string> = {
-  exchange: "var(--color-navy)",
-  "exchange cluster": "var(--color-navy)",
-  mixer: "var(--color-risk-high-fg)",
-  user: "var(--color-gold)",
-  unknown: "var(--color-ink-soft)",
 };
 
 export function SectionTitle({ children }: { children: React.ReactNode }) {
@@ -56,7 +49,7 @@ export function PathFlow({
   entityType: string;
   label: string | null;
 }) {
-  const color = ENTITY_COLOR[entityType] ?? ENTITY_COLOR.unknown;
+  const color = entityColor(entityType);
   return (
     <div className="flex flex-wrap items-center gap-2 font-mono text-xs">
       {path.map((addr, i) => (
@@ -70,7 +63,7 @@ export function PathFlow({
           className="ml-1 rounded px-2 py-1 font-sans font-semibold"
           style={{ color, background: "var(--color-ledger-soft)" }}
         >
-          {label} ({entityType})
+          {label} ({entityPlainLabel(entityType)})
         </span>
       )}
     </div>
@@ -112,11 +105,11 @@ export function CandidateList({ candidates }: { candidates: Candidate[] }) {
         >
           <div className="flex items-center gap-3">
             <span className="font-mono text-xs text-ink-soft">#{i + 1}</span>
-            <span className="font-semibold" style={{ color: ENTITY_COLOR[c.entity_type] ?? ENTITY_COLOR.unknown }}>
+            <span className="font-semibold" style={{ color: entityColor(c.entity_type) }}>
               {c.label ?? "Unresolved"}
             </span>
             <span className="text-xs text-ink-soft">
-              {c.entity_type} · {c.hop_count} hop{c.hop_count === 1 ? "" : "s"}
+              {entityPlainLabel(c.entity_type)} · {c.hop_count} hop{c.hop_count === 1 ? "" : "s"}
               {c.merged_path_count > 1 && ` · ${c.merged_path_count} converging paths`}
             </span>
           </div>
