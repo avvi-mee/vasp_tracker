@@ -64,6 +64,11 @@ export interface ExposureBreakdown {
   indirect: ExposureCategory[];
 }
 
+export interface SeedExposure {
+  receiving: ExposureCategory[];
+  sending: ExposureCategory[];
+}
+
 export interface TraceResultJson {
   seed_address: string;
   path: string[];
@@ -79,6 +84,7 @@ export interface TraceResultJson {
   edges: Edge[];
   caveats: string[];
   exposure: ExposureBreakdown;
+  seed_exposure: SeedExposure;
 }
 
 export interface RiskAssessment {

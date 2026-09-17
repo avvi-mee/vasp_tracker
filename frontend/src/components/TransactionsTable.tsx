@@ -11,6 +11,8 @@ type SortKey = "timestamp" | "amount";
 export function TransactionsTable({ edges, onSelect }: { edges: Edge[]; onSelect: (edge: Edge) => void }) {
   const [sortKey, setSortKey] = useState<SortKey>("timestamp");
   const [assetFilter, setAssetFilter] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const assets = useMemo(
     () => Array.from(new Set(edges.map((e) => e.asset).filter((a): a is string => Boolean(a)))),
@@ -18,11 +20,18 @@ export function TransactionsTable({ edges, onSelect }: { edges: Edge[]; onSelect
   );
 
   const rows = useMemo(() => {
-    const filtered = assetFilter ? edges.filter((e) => e.asset === assetFilter) : edges;
+    const fromTs = dateFrom ? new Date(dateFrom).getTime() / 1000 : null;
+    const toTs = dateTo ? new Date(dateTo).getTime() / 1000 + 86400 : null; // inclusive of the whole "to" day
+    const filtered = edges.filter((e) => {
+      if (assetFilter && e.asset !== assetFilter) return false;
+      if (fromTs != null && (e.timestamp ?? 0) < fromTs) return false;
+      if (toTs != null && (e.timestamp ?? 0) > toTs) return false;
+      return true;
+    });
     return [...filtered].sort((a, b) =>
       sortKey === "timestamp" ? (b.timestamp ?? 0) - (a.timestamp ?? 0) : (b.amount ?? 0) - (a.amount ?? 0)
     );
-  }, [edges, assetFilter, sortKey]);
+  }, [edges, assetFilter, sortKey, dateFrom, dateTo]);
 
   if (edges.length === 0) return <div className="text-xs text-ink-soft">No transactions to show.</div>;
 
@@ -48,6 +57,35 @@ export function TransactionsTable({ edges, onSelect }: { edges: Edge[]; onSelect
               </option>
             ))}
           </select>
+        )}
+        <label className="flex items-center gap-1 text-ink-soft">
+          From
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded border border-wire bg-paper-raised px-1.5 py-1"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-ink-soft">
+          To
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded border border-wire bg-paper-raised px-1.5 py-1"
+          />
+        </label>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => {
+              setDateFrom("");
+              setDateTo("");
+            }}
+            className="text-navy underline"
+          >
+            Clear dates
+          </button>
         )}
         <span className="text-ink-soft">{rows.length} transaction(s)</span>
       </div>

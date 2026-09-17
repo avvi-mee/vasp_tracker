@@ -1,20 +1,56 @@
 import type { ExposureCategory } from "@/lib/api";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
 
+/** Shares can overlap (one path/side can be exposed to more than one
+ * category) and are not required to sum to 100% — see app/graph/exposure.py. */
+export function ExposurePair({
+  leftTitle,
+  leftSubtitle,
+  leftCategories,
+  rightTitle,
+  rightSubtitle,
+  rightCategories,
+}: {
+  leftTitle: string;
+  leftSubtitle: string;
+  leftCategories: ExposureCategory[];
+  rightTitle: string;
+  rightSubtitle: string;
+  rightCategories: ExposureCategory[];
+}) {
+  if (leftCategories.length === 0 && rightCategories.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+      <ExposureColumn title={leftTitle} subtitle={leftSubtitle} categories={leftCategories} />
+      <ExposureColumn title={rightTitle} subtitle={rightSubtitle} categories={rightCategories} />
+    </div>
+  );
+}
+
 /** Direct vs. indirect exposure — Chainalysis's own stated distinction
  * (direct = the seed's immediate counterparty; indirect = anything reached
  * through intermediary hops, regardless of distance), built from that
  * concept rather than copied from any screenshot — the real chart's exact
- * geometry is not publicly documented anywhere we could verify. Shares can
- * overlap (one path can be exposed to more than one category) and are not
- * required to sum to 100% — see app/graph/exposure.py. */
+ * geometry is not publicly documented anywhere we could verify. */
 export function ExposureWheel({ direct, indirect }: { direct: ExposureCategory[]; indirect: ExposureCategory[] }) {
-  if (direct.length === 0 && indirect.length === 0) return null;
   return (
-    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-      <ExposureColumn title="Direct exposure" subtitle="Immediate counterparty" categories={direct} />
-      <ExposureColumn title="Indirect exposure" subtitle="Reached through intermediary hops" categories={indirect} />
-    </div>
+    <ExposurePair
+      leftTitle="Direct exposure" leftSubtitle="Immediate counterparty" leftCategories={direct}
+      rightTitle="Indirect exposure" rightSubtitle="Reached through intermediary hops" rightCategories={indirect}
+    />
+  );
+}
+
+/** Receiving vs. sending exposure for the seed address itself — a
+ * complementary cut from direct/indirect: transfer direction at the seed,
+ * not hop distance. Confirmed from a real Reactor screenshot as a distinct,
+ * named pair of wheels alongside the direct/indirect ones. */
+export function SeedExposureWheel({ receiving, sending }: { receiving: ExposureCategory[]; sending: ExposureCategory[] }) {
+  return (
+    <ExposurePair
+      leftTitle="Receiving exposure" leftSubtitle="Who sent funds to this address" leftCategories={receiving}
+      rightTitle="Sending exposure" rightSubtitle="Where this address sent funds" rightCategories={sending}
+    />
   );
 }
 

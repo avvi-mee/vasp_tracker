@@ -51,7 +51,7 @@ from app.data.watchlist_store import (
 )
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
-from app.graph.exposure import compute_exposure
+from app.graph.exposure import SeedExposure, compute_exposure, compute_seed_exposure
 from app.graph.risk import RiskAssessment, assess
 from app.graph.trace import TraceResult, trace_to_nearest_entity
 from app.sahyog.gateway import build_disclosure_request
@@ -153,11 +153,31 @@ def _edges(result) -> list[dict]:
     ]
 
 
-def _trace_json(result, currency: str) -> dict:
+def _seed_exposure_json(result, chain_cfg: dict) -> dict:
+    """Best-effort — re-fetches the seed's own transactions (both
+    directions) to compute receiving/sending exposure. A second network
+    call for the same address the trace's own first hop already fetched
+    and discarded half of; not caching it yet is a known, accepted
+    ponytail — Redis caching is already a deferred fast-follow for exactly
+    this kind of repeat fetch, and failure here must never break the trace
+    itself, which is why this is wrapped and swallowed, not raised."""
+    try:
+        seed_txs = chain_cfg["fetch"](result.seed_address)
+        seed_exposure = compute_seed_exposure(
+            result.seed_address, seed_txs, chain_cfg["currency"], _labels(), KNOWN_MIXERS, asset=result.asset)
+        return _jsonable(seed_exposure)
+    except Exception:
+        logger.exception("Seed exposure fetch failed for %s", result.seed_address)
+        return _jsonable(SeedExposure())
+
+
+def _trace_json(result, chain_cfg: dict) -> dict:
+    currency = chain_cfg["currency"]
     payload = _jsonable(result)
     payload.pop("graph", None)  # str(DiGraph) is noise, not data
     payload["edges"] = _edges(result)
     payload["exposure"] = _jsonable(compute_exposure(result, currency, _labels(), KNOWN_MIXERS))
+    payload["seed_exposure"] = _seed_exposure_json(result, chain_cfg)
     return payload
 
 
@@ -191,7 +211,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     return {
         "chain": chain,
         "case_id": case_id,
-        "trace": _trace_json(result, chain_cfg["currency"]),
+        "trace": _trace_json(result, chain_cfg),
         "risk": _jsonable(risk),
         "sahyog_draft": build_disclosure_request(chain, result, risk, analyst_note=req.analyst_note),
     }

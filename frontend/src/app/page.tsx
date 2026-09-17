@@ -19,7 +19,7 @@ import {
   StatTile,
 } from "@/components/Verdict";
 import { InvestigationGraph, type GraphSelection } from "@/components/InvestigationGraph";
-import { ExposureWheel } from "@/components/ExposureWheel";
+import { ExposureWheel, SeedExposureWheel } from "@/components/ExposureWheel";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { DetailDrawer } from "@/components/DetailDrawer";
 import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
@@ -187,8 +187,18 @@ function HomeContent({ officer }: { officer: Officer }) {
 
           {(result.trace.exposure.direct.length > 0 || result.trace.exposure.indirect.length > 0) && (
             <>
-              <SectionTitle>Exposure</SectionTitle>
+              <SectionTitle>Exposure — direct vs. indirect (along the trace)</SectionTitle>
               <ExposureWheel direct={result.trace.exposure.direct} indirect={result.trace.exposure.indirect} />
+            </>
+          )}
+
+          {(result.trace.seed_exposure.receiving.length > 0 || result.trace.seed_exposure.sending.length > 0) && (
+            <>
+              <SectionTitle>Exposure — receiving vs. sending (at this address)</SectionTitle>
+              <SeedExposureWheel
+                receiving={result.trace.seed_exposure.receiving}
+                sending={result.trace.seed_exposure.sending}
+              />
             </>
           )}
 
@@ -286,6 +296,8 @@ function HomeContent({ officer }: { officer: Officer }) {
       <DetailDrawer
         selection={selection}
         candidates={result?.trace.candidates ?? []}
+        edges={result?.trace.edges ?? []}
+        chain={result?.chain ?? ""}
         onClose={() => setSelection(null)}
       />
     </main>

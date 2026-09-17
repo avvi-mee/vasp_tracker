@@ -21,6 +21,8 @@ through both. Don't expect these percentages to sum to 100%.
 """
 from dataclasses import dataclass, field
 
+from app.addresses import normalize_address as _normalize
+from app.assets import amount, asset_key
 from app.data.known_illicit import check_illicit
 from app.data.tagpacks import lookup_address
 from app.graph.risk import DARKNET_MARKET_CATEGORIES, MIXER_CATEGORIES
@@ -37,6 +39,19 @@ class ExposureCategory:
 class ExposureBreakdown:
     direct: list[ExposureCategory] = field(default_factory=list)
     indirect: list[ExposureCategory] = field(default_factory=list)
+
+
+@dataclass
+class SeedExposure:
+    """Receiving vs. sending exposure for the seed address itself — a
+    real Reactor screenshot shows this as a distinct, complementary cut from
+    direct/indirect: it's about transfer DIRECTION at the seed (who sent to
+    it, who it sent to), not hop distance along the trace. The trace engine
+    only ever follows outgoing transfers; the seed's inbound transfers were
+    already being fetched (every chain client returns both directions) and
+    simply discarded — this is the one place they're used."""
+    receiving: list[ExposureCategory] = field(default_factory=list)
+    sending: list[ExposureCategory] = field(default_factory=list)
 
 
 def _classify(addr: str, currency: str, labels_lookup: dict, mixers_lookup: dict) -> tuple[str, str] | None:
@@ -88,3 +103,40 @@ def compute_exposure(result, currency: str, labels_lookup: dict, mixers_lookup: 
         )
 
     return ExposureBreakdown(direct=_to_list(direct_totals), indirect=_to_list(indirect_totals))
+
+
+def compute_seed_exposure(seed_address: str, txs: list[dict], currency: str,
+                          labels_lookup: dict, mixers_lookup: dict,
+                          asset: tuple[str, str] | None = None) -> SeedExposure:
+    """txs: every transaction touching the seed address (both directions) —
+    the same raw fetch the trace's first hop already makes, just not
+    discarded this time. Restricted to a single asset when one is given
+    (the asset the trace followed), for the same reason the rest of this
+    project never sums raw values across assets of different decimal scale.
+    An uncategorized counterparty is reported as its own "unattributed"
+    share rather than silently excluded — not knowing where a slice of the
+    money came from is itself worth showing, not hiding.
+    """
+    seed = _normalize(seed_address)
+    if asset is not None:
+        txs = [t for t in txs if asset_key(t) == asset]
+
+    def _aggregate(rows: list[dict], counterparty_field: str) -> list[ExposureCategory]:
+        totals: dict[str, float] = {}
+        label_for: dict[str, str] = {}
+        for t in rows:
+            counterparty = _normalize(t[counterparty_field])
+            hit = _classify(counterparty, currency, labels_lookup, mixers_lookup)
+            category, label = hit if hit else ("unattributed", None)
+            totals[category] = totals.get(category, 0.0) + amount(t)
+            if label:
+                label_for.setdefault(category, label)
+        total = sum(totals.values()) or 1.0
+        return sorted(
+            (ExposureCategory(cat, label_for.get(cat), v / total) for cat, v in totals.items()),
+            key=lambda e: e.value_share, reverse=True,
+        )
+
+    receiving = _aggregate([t for t in txs if _normalize(t["to_addr"]) == seed], "from_addr")
+    sending = _aggregate([t for t in txs if _normalize(t["from_addr"]) == seed], "to_addr")
+    return SeedExposure(receiving=receiving, sending=sending)

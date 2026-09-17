@@ -5,8 +5,16 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.graph.exposure import compute_exposure
+from app.graph.exposure import compute_exposure, compute_seed_exposure
 from app.graph.trace import Candidate
+
+
+def tx(frm, to, value, asset_type="ETH", asset_symbol=None, asset_contract="", decimals=18):
+    return {
+        "from_addr": frm, "to_addr": to, "value_wei": value,
+        "asset_type": asset_type, "asset_symbol": asset_symbol or asset_type,
+        "asset_contract": asset_contract, "decimals": decimals,
+    }
 
 
 class _FakeResult:
@@ -91,3 +99,46 @@ def test_graphsense_category_names_fold_into_the_same_buckets_as_risk_py():
     exposure = compute_exposure(result, "ETH", labels, mixers_lookup={})
 
     assert exposure.direct[0].category == "mixer"
+
+
+def test_seed_receiving_and_sending_exposure_are_independent_directions():
+    """Seed received from a mixer, sent to an exchange -- two different
+    transfer directions, two different classifications, neither one hop
+    distance nor candidate paths involved at all."""
+    labels = {("ETH", "0xexch"): {"label": "Test Exchange", "category": "exchange"}}
+    mixers = {("ETH", "0xmixer"): "Test Mixer"}
+    txs = [
+        tx("0xmixer", "0xseed", 10 * 10**18),
+        tx("0xseed", "0xexch", 4 * 10**18),
+    ]
+
+    result = compute_seed_exposure("0xseed", txs, "ETH", labels, mixers)
+
+    assert result.receiving[0].category == "mixer"
+    assert result.receiving[0].value_share == 1.0
+    assert result.sending[0].category == "exchange"
+    assert result.sending[0].value_share == 1.0
+
+
+def test_seed_exposure_reports_unattributed_rather_than_hiding_it():
+    txs = [tx("0xunknown", "0xseed", 5 * 10**18)]
+    result = compute_seed_exposure("0xseed", txs, "ETH", labels_lookup={}, mixers_lookup={})
+    assert result.receiving[0].category == "unattributed"
+    assert result.receiving[0].value_share == 1.0
+
+
+def test_seed_exposure_restricts_to_one_asset_when_given():
+    """A dust native-asset transfer must not dilute a real token exposure
+    breakdown -- same "follow one asset" discipline as the rest of the
+    project, applied here too."""
+    labels = {("ETH", "0xexch"): {"label": "Test Exchange", "category": "exchange"}}
+    txs = [
+        tx("0xmixer", "0xseed", 1, asset_type="ETH"),  # native dust, different asset
+        tx("0xexch", "0xseed", 50_000 * 10**6, asset_symbol="USDT", asset_contract="0xdac1", decimals=6),
+    ]
+    followed_asset = ("USDT", "0xdac1")
+
+    result = compute_seed_exposure("0xseed", txs, "ETH", labels, mixers_lookup={}, asset=followed_asset)
+
+    assert len(result.receiving) == 1
+    assert result.receiving[0].category == "exchange"
