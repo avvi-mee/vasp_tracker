@@ -10,3 +10,4 @@ psycopg2-binary   # Postgres driver — case storage via Supabase (see app/data/
 fastapi           # HTTP service layer — app/api/main.py
 uvicorn[standard] # ASGI server for the FastAPI app
 httpx             # required by fastapi.testclient.TestClient for API tests
+pyjwt             # officer login session tokens — app/auth.py

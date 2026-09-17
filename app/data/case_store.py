@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS cases (
     risk_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS officers (
+    id SERIAL PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'officer',  -- 'officer' | 'supervisor' | 'admin'
+    display_name TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    officer_id INTEGER REFERENCES officers(id),
+    action TEXT NOT NULL,       -- e.g. 'trace', 'certificate', 'login'
+    target TEXT,                -- the address/case touched, if any
+    details JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
@@ -88,6 +106,63 @@ def list_cases(limit: int = 50, conn=None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM cases ORDER BY created_at DESC LIMIT %s", (limit,))
             return [dict(row) for row in cur.fetchall()]
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def create_officer(username: str, password_hash: str, role: str, display_name: str, conn=None) -> int:
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO officers (username, password_hash, role, display_name)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id
+                """,
+                (username, password_hash, role, display_name),
+            )
+            officer_id = cur.fetchone()[0]
+        conn.commit()
+        return officer_id
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def get_officer_by_username(username: str, conn=None) -> dict | None:
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM officers WHERE username = %s", (username,))
+            row = cur.fetchone()
+            return dict(row) if row else None
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def log_action(officer_id: int | None, action: str, target: str | None = None,
+               details: dict | None = None, conn=None) -> None:
+    """Best-effort audit trail — every authenticated mutation gets a row here.
+    This is what upgrades "we have a login" to "we can say who did what,"
+    which is the part of gap #14 that actually matters for a court-facing
+    evidence pack, not just having a password on the door."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO audit_log (officer_id, action, target, details)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (officer_id, action, target, json.dumps(details or {})),
+            )
+        conn.commit()
     finally:
         if owns_conn:
             conn.close()

@@ -9,16 +9,19 @@ Run with: uvicorn app.api.main:app --reload
 """
 import logging
 
+import jwt as pyjwt
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("vasp_trace.api")
 
+from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
-from app.data.case_store import init_db, list_cases, save_case
+from app.data.case_store import get_officer_by_username, init_db, list_cases, log_action, save_case
 from app.data.indian_vasps import coverage_summary, merge_labels
 from app.data.known_mixers import KNOWN_MIXERS
 from app.data.tagpacks import load_labels
@@ -38,6 +41,43 @@ app = FastAPI(title="VASP Trace API", version="1.0",
 # deployed Next.js origin (allow_credentials stays False either way — no
 # cookie auth yet) once there's a real deployment to tighten it to.
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+_bearer = HTTPBearer()
+
+
+class Officer(BaseModel):
+    id: int
+    username: str
+    role: str
+    display_name: str
+
+
+def get_current_officer(creds: HTTPAuthorizationCredentials = Depends(_bearer)) -> Officer:
+    try:
+        payload = decode_token(creds.credentials)
+    except pyjwt.PyJWTError:
+        raise HTTPException(401, "Invalid or expired session — log in again.")
+    return Officer(id=int(payload["sub"]), username=payload["username"],
+                   role=payload["role"], display_name=payload["display_name"])
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
+@app.post("/v1/auth/login")
+def login(req: LoginRequest):
+    officer = get_officer_by_username(req.username)
+    if not officer or not verify_password(req.password, officer["password_hash"]):
+        raise HTTPException(401, "Incorrect username or password.")
+    token = create_token(officer["id"], officer["username"], officer["role"], officer["display_name"])
+    try:
+        log_action(officer["id"], "login")
+    except Exception:
+        logger.exception("Audit log write failed for login by %s", officer["username"])
+    return {"token": token, "officer": {"id": officer["id"], "username": officer["username"],
+                                        "role": officer["role"], "display_name": officer["display_name"]}}
 
 _labels_cache: dict | None = None
 
@@ -99,8 +139,15 @@ def _trace_json(result, currency: str) -> dict:
     return payload
 
 
+def _log_action_safely(officer_id: int, action: str, target: str, details: dict | None = None) -> None:
+    try:
+        log_action(officer_id, action, target, details)
+    except Exception:
+        logger.exception("Audit log write failed for %s by officer %s", action, officer_id)
+
+
 @app.post("/v1/trace")
-def trace(req: TraceRequest):
+def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     """Trace a wallet to its nearest exchange/VASP. Auto-saves a case row
     (best-effort — a missing DATABASE_URL degrades to case_id: null, same as
     the Streamlit UI does)."""
@@ -116,6 +163,9 @@ def trace(req: TraceRequest):
         # would hide a real bug in save_case just as easily, so log it.
         logger.exception("Case save failed for %s", result.seed_address)
 
+    _log_action_safely(officer.id, "trace", result.seed_address,
+                       {"chain": chain, "entity_type": result.entity_type, "case_id": case_id})
+
     return {
         "chain": chain,
         "case_id": case_id,
@@ -126,19 +176,21 @@ def trace(req: TraceRequest):
 
 
 @app.post("/v1/certificate")
-def certificate(req: TraceRequest):
+def certificate(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     """Re-runs the trace and returns the s.63 BSA evidence pack (zip:
     record + Part A + Part B + hash report) as a direct download."""
     chain, _chain_cfg, result, risk = _run_trace(req)
     pack, bundle = build_certificate_bundle(
         chain, result, risk, case_reference=req.case_reference, analyst_note=req.analyst_note)
     filename = f"s63-evidence-{result.seed_address[:10]}.zip"
+    _log_action_safely(officer.id, "certificate", result.seed_address,
+                       {"case_reference": req.case_reference, "record_sha256": pack.record_sha256})
     return Response(bundle, media_type="application/zip",
                      headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @app.get("/v1/cases")
-def cases(limit: int = 200):
+def cases(limit: int = 200, officer: Officer = Depends(get_current_officer)):
     try:
         init_db()
         return list_cases(limit=limit)

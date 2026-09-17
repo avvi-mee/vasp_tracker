@@ -1,7 +1,9 @@
 // Hand-written client for the FastAPI service (app/api/main.py) — the API
-// surface is five endpoints today, small enough that generating a typed
-// client from /openapi.json isn't earning its keep yet. Revisit
-// (openapi-typescript + openapi-fetch, per the plan) once it grows.
+// surface is small enough that generating a typed client from /openapi.json
+// isn't earning its keep yet. Revisit (openapi-typescript + openapi-fetch,
+// per the plan) once it grows.
+
+import { clearSession, getToken } from "@/lib/auth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -100,19 +102,39 @@ export interface ChainInfo {
   currency: string | null;
 }
 
-class ApiError extends Error {}
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     ...init,
   });
+  if (res.status === 401) clearSession(); // stale/expired token — next page load sends them to /login
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new ApiError(body.detail ?? `${res.status} ${res.statusText}`);
+    throw new ApiError(body.detail ?? `${res.status} ${res.statusText}`, res.status);
   }
   return res.json() as Promise<T>;
 }
+
+export interface LoginResponse {
+  token: string;
+  officer: { id: number; username: string; role: string; display_name: string };
+}
+
+export const login = (username: string, password: string) =>
+  request<LoginResponse>("/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) });
 
 export const getChains = () => request<Record<string, ChainInfo>>("/v1/chains");
 
@@ -127,12 +149,13 @@ export const traceWallet = (body: TraceRequest) =>
 export async function downloadCertificate(body: TraceRequest): Promise<void> {
   const res = await fetch(`${API_URL}/v1/certificate`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) clearSession();
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new ApiError(err.detail ?? `${res.status} ${res.statusText}`);
+    throw new ApiError(err.detail ?? `${res.status} ${res.statusText}`, res.status);
   }
   const blob = await res.blob();
   const disposition = res.headers.get("content-disposition") ?? "";

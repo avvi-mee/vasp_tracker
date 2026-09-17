@@ -21,9 +21,15 @@ import { InvestigationGraph, type GraphSelection } from "@/components/Investigat
 import { ExposureWheel } from "@/components/ExposureWheel";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { DetailDrawer } from "@/components/DetailDrawer";
+import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
 import { entityPlainLabel } from "@/lib/entityColors";
+import type { Officer } from "@/lib/auth";
 
 export default function Home() {
+  return <AuthGuard>{(officer) => <HomeContent officer={officer} />}</AuthGuard>;
+}
+
+function HomeContent({ officer }: { officer: Officer }) {
   const [chains, setChains] = useState<Record<string, ChainInfo>>({});
   const [address, setAddress] = useState("");
   const [chain, setChain] = useState<string>("");
@@ -88,10 +94,12 @@ export default function Home() {
 
   return (
     <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-      <header className="mb-8">
+      <header className="mb-4">
         <div className="text-xl font-bold text-navy">VASP Trace</div>
         <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
       </header>
+
+      <OfficerBar officer={officer} />
 
       <form onSubmit={runTrace} className="flex flex-col gap-3 sm:flex-row">
         <input
