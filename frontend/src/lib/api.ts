@@ -195,6 +195,34 @@ export const generateSahyogDraft = (id: number) =>
 export const updateSahyogStatus = (id: number, status: string) =>
   request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "PATCH", body: JSON.stringify({ status }) });
 
+export interface WatchlistEntry {
+  id: number;
+  address: string;
+  chain: string;
+  added_by_officer_id: number | null;
+  added_at: string;
+  last_checked_at: string | null;
+  last_entity_type: string | null;
+  last_label: string | null;
+  last_risk_level: "none" | "low" | "medium" | "high";
+  alert_status: "clear" | "open" | "acknowledged";
+  alert_reason: string | null;
+}
+
+export const getWatchlist = () => request<WatchlistEntry[]>("/v1/watchlist");
+
+export const addToWatchlist = (address: string, chain?: string) =>
+  request<WatchlistEntry>("/v1/watchlist", { method: "POST", body: JSON.stringify({ address, chain }) });
+
+export const checkWatchlistEntry = (id: number) =>
+  request<WatchlistEntry>(`/v1/watchlist/${id}/check`, { method: "POST" });
+
+export const updateWatchlistStatus = (id: number, status: string) =>
+  request<WatchlistEntry>(`/v1/watchlist/${id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+
+export const removeFromWatchlist = (id: number) =>
+  request<{ status: string }>(`/v1/watchlist/${id}`, { method: "DELETE" });
+
 /** Fetches the s.63 evidence zip and triggers a browser download — the
  * sandbox blocks a plain <a href> to a POST endpoint, so this does the
  * fetch-as-blob dance itself. */
