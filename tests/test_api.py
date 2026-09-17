@@ -156,3 +156,58 @@ def test_generate_sahyog_draft_saves_the_recommended_instrument(monkeypatch):
     assert r.status_code == 200
     assert saved["instrument"] == "s94_bnss"  # registered_after_penalty + exchange
     assert saved["draft"]["seed_address"] == "0xaaa"
+
+
+def _fake_watch_row(**overrides):
+    row = {
+        "id": 1, "address": "0xaaa", "chain": "Ethereum", "added_by_officer_id": 1,
+        "added_at": "2026-01-01", "last_checked_at": None, "last_entity_type": None,
+        "last_label": None, "last_risk_level": "none", "alert_status": "clear", "alert_reason": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_watchlist_add_detects_chain_when_omitted(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "init_watchlist_db", lambda: None)
+    monkeypatch.setattr(api_main, "add_to_watchlist", lambda address, chain, officer_id: 1)
+    monkeypatch.setattr(api_main, "get_watch", lambda watch_id: _fake_watch_row())
+
+    r = client.post("/v1/watchlist", json={"address": "0xaaa"}, headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()["address"] == "0xaaa"
+
+
+def test_watchlist_check_reruns_the_trace_and_records_it(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_watch", lambda watch_id: _fake_watch_row(chain="Ethereum"))
+    recorded = {}
+    monkeypatch.setattr(
+        api_main, "record_check",
+        lambda watch_id, entity_type, label, risk_level: recorded.update(
+            entity_type=entity_type, label=label, risk_level=risk_level) or _fake_watch_row(),
+    )
+
+    r = client.post("/v1/watchlist/1/check", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert recorded["entity_type"] == "exchange"  # from fake_fetch -> 0xbbb, labeled Test Exchange
+
+
+def test_watchlist_check_on_unknown_id_is_404(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_watch", lambda watch_id: None)
+    r = client.post("/v1/watchlist/999/check", headers=AUTH_HEADERS)
+    assert r.status_code == 404
+
+
+def test_watchlist_update_rejects_an_invalid_status(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_watch", lambda watch_id: _fake_watch_row())
+
+    def _reject(*a, **k):
+        raise ValueError("bad status")
+    monkeypatch.setattr(api_main, "update_alert_status", _reject)
+
+    r = client.patch("/v1/watchlist/1", json={"status": "not-a-real-status"}, headers=AUTH_HEADERS)
+    assert r.status_code == 422

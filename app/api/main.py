@@ -38,6 +38,17 @@ from app.data.case_store import (
 from app.data.indian_vasps import coverage_summary, merge_labels
 from app.data.known_mixers import KNOWN_MIXERS
 from app.data.tagpacks import load_labels
+from app.data.watchlist_store import (
+    add_to_watchlist,
+    get_watch,
+)
+from app.data.watchlist_store import init_db as init_watchlist_db
+from app.data.watchlist_store import (
+    list_watchlist,
+    record_check,
+    remove_from_watchlist,
+    update_alert_status,
+)
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import compute_exposure
@@ -310,3 +321,79 @@ def chains():
     of hardcoding a second copy of app/chains.py."""
     return {name: {"enabled": cfg["enabled"], "currency": cfg.get("currency")}
             for name, cfg in CHAINS.items()}
+
+
+class WatchlistAddRequest(BaseModel):
+    address: str = Field(min_length=1)
+    chain: str | None = None  # omit to auto-detect, same as /v1/trace
+
+
+@app.post("/v1/watchlist")
+def watchlist_add(req: WatchlistAddRequest, officer: Officer = Depends(get_current_officer)):
+    chain = req.chain or detect_chain(req.address)[0] or "Ethereum"
+    init_watchlist_db()
+    watch_id = add_to_watchlist(req.address, chain, officer.id)
+    _log_action_safely(officer.id, "watchlist_add", req.address, {"chain": chain})
+    return get_watch(watch_id)
+
+
+@app.get("/v1/watchlist")
+def watchlist_list(officer: Officer = Depends(get_current_officer)):
+    try:
+        init_watchlist_db()
+        return list_watchlist()
+    except Exception as exc:
+        raise HTTPException(503, f"Watchlist database unreachable: {exc}")
+
+
+@app.post("/v1/watchlist/{watch_id}/check")
+def watchlist_check(watch_id: int, officer: Officer = Depends(get_current_officer)):
+    """Re-runs the trace for a watched address and records whether anything
+    alert-worthy changed. No scheduler yet — this is the manual "Check now"
+    button; automatic periodic re-checking is a stated future step, not
+    silently implied as already happening."""
+    watch = get_watch(watch_id)
+    if not watch:
+        raise HTTPException(404, f"Watchlist entry {watch_id} not found.")
+
+    chain_cfg = CHAINS.get(watch["chain"])
+    if not chain_cfg or not chain_cfg["enabled"]:
+        raise HTTPException(400, f"{watch['chain']} isn't wired up in this build.")
+
+    try:
+        result = trace_to_nearest_entity(
+            seed_address=watch["address"], currency=chain_cfg["currency"],
+            fetch_transactions_fn=chain_cfg["fetch"],
+            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=4,
+        )
+    except Exception as exc:
+        raise HTTPException(502, f"Re-check failed: {exc}")
+    risk = assess(result)
+
+    updated = record_check(watch_id, result.entity_type, result.label, risk.risk_level)
+    _log_action_safely(officer.id, "watchlist_check", watch["address"],
+                       {"risk_level": risk.risk_level, "alert_status": updated["alert_status"]})
+    return updated
+
+
+class WatchlistStatusRequest(BaseModel):
+    status: str
+
+
+@app.patch("/v1/watchlist/{watch_id}")
+def watchlist_update(watch_id: int, req: WatchlistStatusRequest, officer: Officer = Depends(get_current_officer)):
+    if not get_watch(watch_id):
+        raise HTTPException(404, f"Watchlist entry {watch_id} not found.")
+    try:
+        update_alert_status(watch_id, req.status)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return get_watch(watch_id)
+
+
+@app.delete("/v1/watchlist/{watch_id}")
+def watchlist_remove(watch_id: int, officer: Officer = Depends(get_current_officer)):
+    if not get_watch(watch_id):
+        raise HTTPException(404, f"Watchlist entry {watch_id} not found.")
+    remove_from_watchlist(watch_id)
+    return {"status": "removed"}
