@@ -36,7 +36,7 @@ CHAINS = {
 
 DEMO_ADDRESSES = {
     "— pick a verified example —": "",
-    "2-hop trace → FixedFloat (the core scenario)": "0x392704a6048178a264cf6615547cfeac23867605",
+    "3-hop USDC trace → Kraken deposit address (the core scenario)": "0x392704a6048178a264cf6615547cfeac23867605",
     "1-hop trace → Binance": "0x8aa878f06c34fbe1e9d9c6d2ce3f118b4f7c1c65",
     "Mixer (Tornado Cash, OFAC-sanctioned)": "0x8589427373D6D84E98730D7795D8f6f8731FDA16",
     "OFAC SDN-listed address": "0x8576acc5c05d6ce88f4e49bf65bdf0c62f91353c",

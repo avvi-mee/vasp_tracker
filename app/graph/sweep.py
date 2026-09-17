@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from statistics import median
 
 from app.addresses import normalize_address
+from app.assets import amount, asset_key, dominant_asset
 
 # A deposit address forwards nearly everything it receives. Leaving a little
 # behind is normal (gas, dust, rounding), so this is not 1.0.
@@ -33,6 +34,9 @@ PROMPT_SWEEP_SECONDS = 7 * 24 * 3600
 # destination alone (0.35 + 0.30) clears it: that is the minimal honest
 # signature of a pass-through funnel.
 DEPOSIT_THRESHOLD = 0.60
+# At or above this many fetched transfers, assume the client hit its cap and
+# say so. Matches the smallest DEFAULT_MAX_RECORDS across the chain clients.
+LIKELY_TRUNCATED_AT = 600
 
 
 @dataclass
@@ -49,13 +53,15 @@ class DepositEvidence:
     median_hold_seconds: int | None  # time from funding to sweep; None if unknown
     signals: list[str] = field(default_factory=list)
     caveats: list[str] = field(default_factory=list)
+    asset: str = ""               # the asset these ratios were measured in
 
     def summary(self) -> str:
         if not self.is_deposit_address:
             return (f"{self.address} does not match the deposit-address pattern "
                     f"(forwarded {self.forwarded_ratio:.0%} of what it received).")
+        in_asset = f" in {self.asset}" if self.asset else ""
         return (f"{self.address} behaves as a deposit address controlled by the VASP: "
-                f"it forwarded {self.forwarded_ratio:.0%} of everything it received to "
+                f"it forwarded {self.forwarded_ratio:.0%} of everything it received{in_asset} to "
                 f"{self.vasp_address}, across {self.sweep_count} sweep(s).")
 
 
@@ -75,23 +81,42 @@ def _hold_times(inbound: list[dict], sweeps: list[dict]) -> list[int]:
 
 
 def classify_deposit_address(address: str, transactions: list[dict],
-                             vasp_address: str) -> DepositEvidence:
+                             vasp_address: str,
+                             asset: tuple[str, str] | None = None) -> DepositEvidence:
     """Decide whether `address` looks like a deposit address sweeping into
     `vasp_address`. Pure function over the transaction list the trace already
     fetched — makes no API calls of its own.
+
+    Ratios are measured **within one asset**. Summing raw values across assets
+    would be meaningless once token transfers are in the list — 1 ETH and
+    1 USDT are 10**18 and 10**6 base units respectively, so a mixed sum is
+    dominated by whichever asset has more decimals, not more value. `asset`
+    names the one to measure; when omitted, the asset carrying the most value
+    to the VASP is chosen.
     """
     address = normalize_address(address)
     vasp_address = normalize_address(vasp_address)
 
-    inbound = [t for t in transactions
+    relevant = [t for t in transactions
+                if normalize_address(t["from_addr"]) == address
+                or normalize_address(t["to_addr"]) == address]
+    if asset is None:
+        to_vasp = [t for t in relevant
+                   if normalize_address(t["from_addr"]) == address
+                   and normalize_address(t["to_addr"]) == vasp_address]
+        asset = dominant_asset(to_vasp) or dominant_asset(relevant)
+    if asset is not None:
+        relevant = [t for t in relevant if asset_key(t) == asset]
+
+    inbound = [t for t in relevant
                if normalize_address(t["to_addr"]) == address and t["value_wei"] > 0]
-    outbound = [t for t in transactions
+    outbound = [t for t in relevant
                 if normalize_address(t["from_addr"]) == address and t["value_wei"] > 0]
     sweeps = [t for t in outbound if normalize_address(t["to_addr"]) == vasp_address]
 
-    total_in = sum(t["value_wei"] for t in inbound)
-    total_out = sum(t["value_wei"] for t in outbound)
-    swept = sum(t["value_wei"] for t in sweeps)
+    total_in = sum(amount(t) for t in inbound)
+    total_out = sum(amount(t) for t in outbound)
+    swept = sum(amount(t) for t in sweeps)
 
     forwarded_ratio = swept / total_in if total_in else 0.0
     destination_share = swept / total_out if total_out else 0.0
@@ -133,9 +158,12 @@ def classify_deposit_address(address: str, transactions: list[dict],
     if not inbound:
         caveats.append("no inbound transactions in the fetched history — cannot measure "
                        "forwarding behaviour")
-    if len(transactions) >= 100:
-        caveats.append("transaction history was truncated by the API's page limit — ratios "
-                       "are computed over the fetched window only")
+    # The clients cap how much history they pull (see DEFAULT_MAX_RECORDS in
+    # each api_client). A list at or near that cap probably had more behind it,
+    # so the ratios describe the fetched window, not the address's whole life.
+    if len(transactions) >= LIKELY_TRUNCATED_AT:
+        caveats.append(f"history may be truncated — {len(transactions)} transfers fetched, at or "
+                       f"near the client's page cap; ratios cover the fetched window only")
 
     confidence = round(min(score, 0.95), 2)
     return DepositEvidence(
@@ -150,6 +178,7 @@ def classify_deposit_address(address: str, transactions: list[dict],
         median_hold_seconds=median_hold,
         signals=signals,
         caveats=caveats,
+        asset=asset[0] if asset else "",
     )
 
 

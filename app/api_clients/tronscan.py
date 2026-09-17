@@ -1,43 +1,71 @@
-"""Tronscan API client — Tron (account-based chain, same deposit-sweep
-shape as Ethereum).
+"""Tronscan API client -- Tron (account-based chain, same deposit-sweep shape
+as Ethereum).
 
-Docs: research/01-block-explorer-apis.md. Response schema there is
-medium-confidence (Tronscan's own docs site blocked automated fetching
-during research) — parsing here is defensive, skips anything unexpected
-rather than crashing. An API key is effectively required for reliable
-access since Aug 2025; unauthenticated calls work but are tightly
-rate-limited (~3 req/sec) and may 429.
+Two endpoints, and the second one is the point of this module:
+
+  /api/transaction            native TRX transfers
+  /api/token_trc20/transfers  TRC20 transfers -- overwhelmingly USDT
+
+Tron carries more USDT than any other chain, and USDT-TRC20 is what Indian
+cyber-fraud proceeds actually move in: the ED froze 160,339 USDT in the
+Rs 303 crore syndicate case, and the Gujarat Cyber Cell's Rs 226 crore
+terror-funding case moved the same way. Reading only native TRX on Tron means
+looking at an empty wallet while the money sits in plain view next to it.
+
+Docs: research/01-block-explorer-apis.md. The native response schema there is
+medium-confidence (Tronscan's docs site blocked automated fetching during
+research), so parsing stays defensive -- skip anything unexpected rather than
+crash. An API key is effectively required for reliable access since Aug 2025;
+unauthenticated calls work but are tightly rate-limited (~3 req/sec) and 429.
 """
 import os
 import requests
 
-BASE_URL = "https://apilist.tronscanapi.com/api/transaction"
+BASE_URL = "https://apilist.tronscanapi.com/api"
+TRX_DECIMALS = 6  # SUN per TRX is 10**6, not 10**18 -- Tron is not EVM-scaled
+
+# Tronscan caps `start + limit` at 10,000.
+PAGE_SIZE = 200
+MAX_OFFSET = 10_000
+DEFAULT_MAX_RECORDS = 600
 
 
-def fetch_transactions(address: str, api_key: str | None = None, max_records: int = 20) -> list[dict]:
+def _headers(api_key: str | None) -> dict:
     api_key = api_key or os.environ.get("TRONSCAN_API_KEY")
-    headers = {"TRON-PRO-API-KEY": api_key} if api_key else {}
+    return {"TRON-PRO-API-KEY": api_key} if api_key else {}
 
-    params = {"sort": "-timestamp", "count": "true", "limit": max_records, "start": 0, "address": address}
-    resp = requests.get(BASE_URL, params=params, headers=headers, timeout=20)
-    resp.raise_for_status()
-    payload = resp.json()
 
-    rows = payload.get("data")
-    if not isinstance(rows, list):
-        return []
+def _paged(path: str, address: str, headers: dict, max_records: int) -> list[dict]:
+    """Page through a Tronscan list endpoint, honouring its start+limit ceiling."""
+    collected: list[dict] = []
+    start = 0
+    while len(collected) < max_records and start < MAX_OFFSET:
+        limit = min(PAGE_SIZE, max_records - len(collected), MAX_OFFSET - start)
+        resp = requests.get(f"{BASE_URL}/{path}", headers=headers, timeout=20, params={
+            "sort": "-timestamp", "count": "true", "limit": limit,
+            "start": start, "address": address,
+        })
+        resp.raise_for_status()
+        payload = resp.json()
+        # The two endpoints disagree on the field name for the rows array.
+        rows = payload.get("data") or payload.get("token_transfers")
+        if not isinstance(rows, list) or not rows:
+            break
+        collected.extend(r for r in rows if isinstance(r, dict))
+        if len(rows) < limit:
+            break
+        start += limit
+    return collected[:max_records]
 
-    normalized = []
+
+def _native(rows: list[dict]) -> list[dict]:
+    out = []
     for tx in rows:
-        if not isinstance(tx, dict):
-            continue
-        tx_hash = tx.get("hash")
-        owner = tx.get("ownerAddress")
-        to = tx.get("toAddress")
-        amount = tx.get("amount")
+        tx_hash, owner, to, amount = (tx.get("hash"), tx.get("ownerAddress"),
+                                      tx.get("toAddress"), tx.get("amount"))
         if not tx_hash or not owner or not to or amount is None:
             continue  # skip anything not matching the attested schema rather than guess
-        normalized.append({
+        out.append({
             "tx_hash": tx_hash,
             "block_number": tx.get("block"),
             "timestamp": tx.get("timestamp"),
@@ -45,5 +73,54 @@ def fetch_transactions(address: str, api_key: str | None = None, max_records: in
             "to_addr": to,
             "value_wei": int(amount),  # SUN, the Tron equivalent of wei
             "asset_type": "TRX",
+            "asset_symbol": "TRX",
+            "asset_contract": "",
+            "decimals": TRX_DECIMALS,
+            "transfer_type": "native",
         })
-    return normalized
+    return out
+
+
+def _trc20(rows: list[dict]) -> list[dict]:
+    out = []
+    for tx in rows:
+        info = tx.get("tokenInfo") or {}
+        tx_hash = tx.get("transaction_id") or tx.get("hash")
+        frm, to = tx.get("from_address"), tx.get("to_address")
+        amount = tx.get("quant") if tx.get("quant") is not None else tx.get("amount_str")
+        if not tx_hash or not frm or not to or amount is None:
+            continue
+        try:
+            value = int(amount)
+        except (TypeError, ValueError):
+            continue  # quant arrives as a string of base units; anything else is not parseable
+        out.append({
+            "tx_hash": tx_hash,
+            "block_number": tx.get("block"),
+            "timestamp": tx.get("block_ts") or tx.get("timestamp"),
+            "from_addr": frm,
+            "to_addr": to,
+            "value_wei": value,
+            "asset_type": "TRX",  # the chain's native ticker, kept for back-compat
+            "asset_symbol": info.get("tokenAbbr") or info.get("tokenName") or "TRC20",
+            "asset_contract": tx.get("contract_address") or info.get("tokenId") or "",
+            "decimals": int(info.get("tokenDecimal") or 6),
+            "transfer_type": "token",
+        })
+    return out
+
+
+def fetch_transactions(address: str, api_key: str | None = None,
+                       max_records: int = DEFAULT_MAX_RECORDS,
+                       include_tokens: bool = True) -> list[dict]:
+    """Return this address's TRX and TRC20 transfers in the common shape.
+
+    Compare values across assets with app.assets.amount() -- TRX and USDT both
+    use 6 decimals here, but other TRC20 tokens do not.
+    """
+    headers = _headers(api_key)
+    transfers = _native(_paged("transaction", address, headers, max_records))
+    if include_tokens:
+        transfers += _trc20(_paged("token_trc20/transfers", address, headers, max_records))
+    transfers.sort(key=lambda t: (t.get("timestamp") or 0, t["tx_hash"]))
+    return transfers

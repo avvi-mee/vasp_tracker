@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import networkx as nx
 
 from app.addresses import normalize_address
+from app.assets import amount, asset_key, dominant_asset
 from app.graph.sweep import DepositEvidence, classify_deposit_address
 
 
@@ -22,6 +23,9 @@ class TraceResult:
     confidence: float
     source: str | None = None
     reason: str | None = None
+    # Which asset the trace followed, e.g. ("USDT", "0xdac17f...") — the money
+    # usually moves in one asset, and saying which one is part of the evidence.
+    asset: tuple[str, str] | None = None
     # Set when the trace ends at an exchange and the hop before it behaves like
     # a deposit address — that address, not the exchange, is what a disclosure
     # request must name. See app/graph/sweep.py.
@@ -56,12 +60,15 @@ def trace_to_nearest_entity(
     g.add_node(seed_address)
     current = seed_address
     prev_txs: list[dict] = []  # transactions of path[-2], reused for sweep analysis
+    followed_asset: tuple[str, str] | None = None
+    asset_switches: list[tuple[str, tuple[str, str] | None]] = []
 
     for hop in range(max_hops + 1):
         mixer_label = mixers_lookup.get((currency.upper(), current))
         if mixer_label:
             return TraceResult(seed_address, path, g, hop, "mixer", mixer_label,
-                                confidence=_confidence(hop, True), source="curated known-address list")
+                                confidence=_confidence(hop, True), source="curated known-address list",
+                                asset=followed_asset)
 
         label_rec = lookup_address(labels_lookup, currency, current)
         if label_rec:
@@ -70,26 +77,47 @@ def trace_to_nearest_entity(
             # address — the one that maps to a single KYC'd account.
             deposit = None
             if hop >= 1 and "exchange" in entity_type.lower() and prev_txs:
-                deposit = classify_deposit_address(path[-2], prev_txs, current)
+                deposit = classify_deposit_address(path[-2], prev_txs, current, asset=followed_asset)
             return TraceResult(seed_address, path, g, hop, entity_type, label_rec["label"],
                                 confidence=_confidence(hop, label_rec.get("is_cluster_definer", False)),
-                                source=label_rec.get("source"), deposit=deposit)
+                                source=label_rec.get("source"), deposit=deposit,
+                                asset=followed_asset)
 
         if hop == max_hops:
             break  # don't fetch one more hop just to discard it
 
         txs = fetch_transactions_fn(current)
-        outgoing = [t for t in txs if t["from_addr"] == current and t["value_wei"] > 0]
+        outgoing = [t for t in txs
+                    if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]
         if not outgoing:
             return TraceResult(seed_address, path, g, hop, "unknown", None,
-                                confidence=0.0, reason="dead end — no outgoing transactions found")
+                                confidence=0.0, reason="dead end — no outgoing transactions found",
+                                asset=followed_asset)
 
-        dominant = max(outgoing, key=lambda t: t["value_wei"])
+        # Follow one asset, not raw integers. Once token transfers are in the
+        # list, comparing value_wei across assets is meaningless: 0.1 ETH is a
+        # bigger integer than 50,000 USDT. Pick the asset carrying the most
+        # value at the seed, then stay with it while it keeps moving — that is
+        # what an investigator following the proceeds actually does.
+        if followed_asset is None:
+            followed_asset = dominant_asset(outgoing)
+        same_asset = [t for t in outgoing if asset_key(t) == followed_asset]
+        if not same_asset:
+            # The trail changed asset — a swap, or the funds were converted.
+            # Re-pick rather than stop, and record the switch as evidence.
+            followed_asset = dominant_asset(outgoing)
+            same_asset = [t for t in outgoing if asset_key(t) == followed_asset]
+            asset_switches.append((current, followed_asset))
+
+        dominant = max(same_asset, key=amount)
         next_addr = _normalize(dominant["to_addr"])
-        g.add_edge(current, next_addr, tx_hash=dominant["tx_hash"], value_wei=dominant["value_wei"])
+        g.add_edge(current, next_addr, tx_hash=dominant["tx_hash"],
+                   value_wei=dominant["value_wei"], amount=amount(dominant),
+                   asset=followed_asset[0] if followed_asset else None)
         path.append(next_addr)
         prev_txs = txs  # belong to `current`, which is now path[-2]
         current = next_addr
 
     return TraceResult(seed_address, path, g, max_hops, "unknown", None,
-                        confidence=0.0, reason=f"hop limit ({max_hops}) reached with no match")
+                        confidence=0.0, reason=f"hop limit ({max_hops}) reached with no match",
+                        asset=followed_asset)
