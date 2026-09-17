@@ -6,18 +6,64 @@ correctly-structured disclosure/freeze request in exactly the shape a real
 integration would need — so the moment real access exists, only
 submit_disclosure_request()'s body has to change, nothing upstream of it.
 
+Updated on fresh research: a Bitget press release (23 Jun 2025), independently
+corroborated by one trade-press outlet, states 45+ crypto exchanges (WazirX,
+KuCoin, Bybit among them) are onboarded to SAHYOG specifically for VASP data-
+disclosure requests citing **BNSS 2023 s.94** — still a manual, portal-form
+workflow with no public API, but a sharper, real target than a generic
+"disclosure request" was. Neither claim is from an official MHA/I4C source,
+so this stays honest about that too.
+
 Never claims a live submission happened. Says so explicitly in every report.
 """
 from datetime import datetime, timezone
+
+# Which of the four legally operative instruments to lead with — the plan's
+# own domain finding #2, made computable. This is a starting recommendation
+# for the officer to confirm, never an automated legal determination: the
+# routing rule is simple on purpose, and every reason is stated so it can be
+# checked, not trusted blindly.
+INSTRUMENTS = {
+    "s94_bnss": "BNSS 2023 s.94 — summons for documents/KYC records",
+    "s107_bnss": "BNSS 2023 s.107 — attachment of proceeds of crime",
+    "pmla_s5": "PMLA s.5 — provisional attachment (ED route)",
+    "s63_bsa": "BSA 2023 s.63 — evidence certificate only",
+}
+
+
+def recommend_instrument(trace_result, risk_assessment) -> dict:
+    """Rule-based recommendation among the four instruments — VASP
+    FIU-registered and Indian favors s.94; a high-risk trail with an
+    identified destination favors s.107 (available to state police without
+    ED); FIU non-compliant/offshore favors the PMLA route; anything else
+    still gets the s.63 certificate, since that preserves the evidence
+    regardless of which disclosure instrument eventually applies."""
+    compliance = risk_assessment.compliance_status
+    is_exchange = trace_result.entity_type in ("exchange", "exchange cluster")
+
+    if compliance == "registered_after_penalty" and is_exchange:
+        key, reason = "s94_bnss", "VASP is FIU-registered — the standard KYC/records summons route."
+    elif risk_assessment.risk_level == "high" and is_exchange:
+        key, reason = "s107_bnss", ("High-risk trail with an identified destination — a time-critical "
+                                    "attachment route available to state police without going through ED.")
+    elif compliance == "flagged_non_compliant":
+        key, reason = "pmla_s5", "VASP is FIU non-compliant/offshore — likely needs ED's PMLA route, not a domestic summons."
+    else:
+        key, reason = "s63_bsa", "No specific disclosure/freeze instrument indicated yet — the evidence certificate still applies."
+
+    return {"instrument": key, "label": INSTRUMENTS[key], "reason": reason}
 
 
 def build_disclosure_request(chain: str, trace_result, risk_assessment, analyst_note: str = "") -> dict:
     """Builds the investigation-ready report / disclosure request package."""
     return {
-        "request_type": "freeze_or_disclosure_request",
-        "status": "DRAFT — SAHYOG live API access pending I4C provisioning. "
-                  "This report is fully formatted and ready for manual or future "
-                  "automated submission through the SAHYOG Portal.",
+        "request_type": "vasp_data_disclosure_request",
+        "legal_basis": "BNSS 2023 s.94 (summons for documents, incl. electronic records) — the same "
+                       "provision reportedly cited for crypto-exchange onboarding to SAHYOG since mid-2025.",
+        "recommended_instrument": recommend_instrument(trace_result, risk_assessment),
+        "status": "DRAFT — SAHYOG's crypto-VASP disclosure workflow is manual/portal-based, no public "
+                  "API exists to submit this automatically. Ready for manual submission through the "
+                  "SAHYOG Portal by an onboarded nodal officer.",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "chain": chain,
         "seed_address": trace_result.seed_address,

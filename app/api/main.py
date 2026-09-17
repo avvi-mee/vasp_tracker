@@ -9,8 +9,17 @@ Run with: uvicorn app.api.main:app --reload
 """
 import logging
 
-import jwt as pyjwt
 from dotenv import load_dotenv
+
+# Must run before any app.* import: app.auth reads JWT_SECRET from the
+# environment at import time (a module-level constant, not read per-request),
+# so loading .env after that import silently ignores whatever is in it and
+# falls back to a random one-time secret every time. Caught live: JWT_SECRET
+# was set in .env and still wasn't being picked up until this moved up here.
+load_dotenv()
+
+import jwt as pyjwt
+import networkx as nx
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
@@ -21,18 +30,20 @@ logger = logging.getLogger("vasp_trace.api")
 
 from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
-from app.data.case_store import get_officer_by_username, init_db, list_cases, log_action, save_case
+from app.data.case_store import (
+    get_case, get_officer_by_username, init_db, list_case_events, list_cases, log_action,
+    save_case, save_sahyog_draft, update_case_legal_refs, update_case_status, update_case_tags,
+    update_sahyog_status,
+)
 from app.data.indian_vasps import coverage_summary, merge_labels
 from app.data.known_mixers import KNOWN_MIXERS
 from app.data.tagpacks import load_labels
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import compute_exposure
-from app.graph.risk import assess
-from app.graph.trace import trace_to_nearest_entity
+from app.graph.risk import RiskAssessment, assess
+from app.graph.trace import TraceResult, trace_to_nearest_entity
 from app.sahyog.gateway import build_disclosure_request
-
-load_dotenv()
 
 app = FastAPI(title="VASP Trace API", version="1.0",
               description="Automated blockchain intelligence & VASP attribution — SIH26182")
@@ -156,7 +167,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     case_id = None
     try:
         init_db()
-        case_id = save_case(chain_cfg["currency"], result, risk)
+        case_id = save_case(chain_cfg["currency"], result, risk, officer_id=officer.id)
     except Exception:
         # Best-effort, same posture as the Streamlit UI — a missing
         # DATABASE_URL shouldn't fail the trace. But swallowing it silently
@@ -196,6 +207,93 @@ def cases(limit: int = 200, officer: Officer = Depends(get_current_officer)):
         return list_cases(limit=limit)
     except Exception as exc:
         raise HTTPException(503, f"Case database unreachable: {exc}")
+
+
+def _require_case(case_id: int) -> dict:
+    case = get_case(case_id)
+    if not case:
+        raise HTTPException(404, f"Case {case_id} not found.")
+    return case
+
+
+def _case_to_trace_and_risk(case: dict):
+    """Reconstructs just enough of TraceResult/RiskAssessment from a stored
+    case row to (re)build a SAHYOG draft without re-tracing — the case table
+    only ever stored the flattened verdict, not the full objects, so `source`
+    comes back empty and the graph comes back empty; build_disclosure_request
+    doesn't touch either."""
+    result = TraceResult(
+        seed_address=case["seed_address"], path=case["path"] or [case["seed_address"]],
+        graph=nx.DiGraph(), hop_count=case["hop_count"] or 0,
+        entity_type=case["entity_type"] or "unknown", label=case["label"],
+        confidence=float(case["confidence"]) if case["confidence"] is not None else 0.0,
+    )
+    risk = RiskAssessment(
+        compliance_status=case["compliance_status"] or "unknown",
+        compliance_detail=case["compliance_detail"] or "",
+        risk_flag=case["risk_flag"], risk_level=case["risk_level"] or "none",
+        risk_reason=case["risk_reason"],
+    )
+    return result, risk
+
+
+@app.get("/v1/cases/{case_id}")
+def case_detail(case_id: int, officer: Officer = Depends(get_current_officer)):
+    case = _require_case(case_id)
+    case["events"] = list_case_events(case_id)
+    return case
+
+
+class CaseUpdateRequest(BaseModel):
+    status: str | None = None
+    tags: list[str] | None = None
+    ncrp_ack_number: str | None = None
+    cctns_fir_number: str | None = None
+
+
+@app.patch("/v1/cases/{case_id}")
+def update_case(case_id: int, req: CaseUpdateRequest, officer: Officer = Depends(get_current_officer)):
+    case = _require_case(case_id)
+    if req.status is not None:
+        try:
+            update_case_status(case_id, req.status, officer.id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+    if req.tags is not None:
+        update_case_tags(case_id, req.tags, officer.id)
+    if req.ncrp_ack_number is not None or req.cctns_fir_number is not None:
+        update_case_legal_refs(case_id, req.ncrp_ack_number or case.get("ncrp_ack_number"),
+                               req.cctns_fir_number or case.get("cctns_fir_number"), officer.id)
+    return get_case(case_id)
+
+
+@app.post("/v1/cases/{case_id}/sahyog")
+def generate_sahyog_draft(case_id: int, officer: Officer = Depends(get_current_officer)):
+    """(Re)generates the disclosure-request draft for an existing case —
+    always resets its status to 'draft', since a fresh draft supersedes
+    whatever submission state the old one was in."""
+    case = _require_case(case_id)
+    result, risk = _case_to_trace_and_risk(case)
+    draft = build_disclosure_request(case["chain"], result, risk)
+    save_sahyog_draft(case_id, draft["recommended_instrument"]["instrument"], draft, officer.id)
+    return get_case(case_id)
+
+
+class SahyogStatusRequest(BaseModel):
+    status: str
+
+
+@app.patch("/v1/cases/{case_id}/sahyog")
+def update_sahyog(case_id: int, req: SahyogStatusRequest, officer: Officer = Depends(get_current_officer)):
+    """Manual status tracking — Draft -> Ready for submission -> Submitted ->
+    Acknowledged -> Fulfilled. Nothing syncs this automatically; no real
+    SAHYOG API exists to sync against (see the plan's SAHYOG research)."""
+    _require_case(case_id)
+    try:
+        update_sahyog_status(case_id, req.status, officer.id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    return get_case(case_id)
 
 
 @app.get("/v1/coverage")

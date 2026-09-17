@@ -99,3 +99,60 @@ def test_login_issues_a_working_token(monkeypatch):
 
     r = client.get("/v1/cases", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code != 401  # a real issued token is accepted downstream
+
+
+def _fake_case_row(**overrides):
+    row = {
+        "id": 1, "seed_address": "0xaaa", "chain": "ETH", "entity_type": "exchange",
+        "label": "Binance 1", "confidence": 0.9, "hop_count": 1, "path": ["0xaaa", "0xbbb"],
+        "compliance_status": "registered_after_penalty", "compliance_detail": "test",
+        "risk_flag": False, "risk_level": "none", "risk_reason": None,
+        "status": "open", "tags": [], "ncrp_ack_number": None, "cctns_fir_number": None,
+        "sahyog_status": None, "sahyog_instrument": None, "sahyog_draft": None,
+    }
+    row.update(overrides)
+    return row
+
+
+def test_case_detail_includes_its_event_timeline(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    monkeypatch.setattr(api_main, "list_case_events", lambda case_id: [{"action": "trace_saved"}])
+
+    r = client.get("/v1/cases/1", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()["events"] == [{"action": "trace_saved"}]
+
+
+def test_unknown_case_id_is_a_404(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: None)
+    r = client.get("/v1/cases/999", headers=AUTH_HEADERS)
+    assert r.status_code == 404
+
+
+def test_update_case_status_rejects_an_invalid_value(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+
+    def _reject(*a, **k):
+        raise ValueError("bad status")
+    monkeypatch.setattr(api_main, "update_case_status", _reject)
+
+    r = client.patch("/v1/cases/1", json={"status": "archived-by-mistake"}, headers=AUTH_HEADERS)
+    assert r.status_code == 422
+
+
+def test_generate_sahyog_draft_saves_the_recommended_instrument(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    saved = {}
+    monkeypatch.setattr(
+        api_main, "save_sahyog_draft",
+        lambda case_id, instrument, draft, officer_id: saved.update(instrument=instrument, draft=draft),
+    )
+
+    r = client.post("/v1/cases/1/sahyog", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert saved["instrument"] == "s94_bnss"  # registered_after_penalty + exchange
+    assert saved["draft"]["seed_address"] == "0xaaa"

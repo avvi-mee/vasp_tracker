@@ -8,10 +8,14 @@ from pathlib import Path
 from unittest.mock import MagicMock
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import pytest
 import networkx as nx
 from app.graph.trace import TraceResult
 from app.graph.risk import RiskAssessment
-from app.data.case_store import save_case, list_cases
+from app.data.case_store import (
+    save_case, list_cases, update_case_status, save_sahyog_draft,
+    update_sahyog_status, log_case_event,
+)
 
 
 def _fake_conn_returning(fetchone_value=None, fetchall_value=None):
@@ -49,3 +53,54 @@ def test_list_cases_returns_rows_as_dicts():
     rows = list_cases(limit=10, conn=conn)
     assert len(rows) == 1
     assert rows[0]["seed_address"] == "0xaaa"
+
+
+def test_save_case_with_an_officer_logs_a_case_event():
+    """Attributing a case to a real officer is what makes the audit trail
+    real -- confirm it actually happens, not just that the column exists."""
+    conn, cursor = _fake_conn_returning(fetchone_value=(42,))
+    result = TraceResult(seed_address="0xaaa", path=["0xaaa", "0xbbb"], graph=nx.DiGraph(),
+                          hop_count=1, entity_type="exchange", label="Binance 1", confidence=0.9)
+    risk = RiskAssessment(compliance_status="registered_after_penalty",
+                          compliance_detail="test", risk_flag=False, risk_level="none")
+
+    save_case("ETH", result, risk, officer_id=7, conn=conn)
+
+    event_call = next(c for c in cursor.execute.call_args_list if "INSERT INTO case_events" in c[0][0])
+    assert event_call[0][1] == (42, 7, "trace_saved", "{}")
+
+
+def test_update_case_status_rejects_an_unknown_status():
+    conn, _ = _fake_conn_returning()
+    with pytest.raises(ValueError):
+        update_case_status(1, "archived-by-mistake", officer_id=1, conn=conn)
+
+
+def test_update_case_status_updates_and_logs():
+    conn, cursor = _fake_conn_returning()
+    update_case_status(1, "closed", officer_id=7, conn=conn)
+    update_call = cursor.execute.call_args_list[0]
+    assert "UPDATE cases SET status" in update_call[0][0]
+    assert update_call[0][1] == ("closed", 1)
+
+
+def test_save_sahyog_draft_sets_status_to_draft():
+    conn, cursor = _fake_conn_returning()
+    save_sahyog_draft(1, "s94_bnss", {"seed_address": "0xaaa"}, officer_id=7, conn=conn)
+    update_call = cursor.execute.call_args_list[0]
+    assert "sahyog_status = 'draft'" in update_call[0][0]
+    assert update_call[0][1][0] == "s94_bnss"
+
+
+def test_update_sahyog_status_rejects_an_unknown_status():
+    conn, _ = _fake_conn_returning()
+    with pytest.raises(ValueError):
+        update_sahyog_status(1, "not_a_real_status", officer_id=1, conn=conn)
+
+
+def test_log_case_event_inserts_a_row():
+    conn, cursor = _fake_conn_returning()
+    log_case_event(1, 7, "status_changed", {"status": "closed"}, conn=conn)
+    args = cursor.execute.call_args[0]
+    assert "INSERT INTO case_events" in args[0]
+    assert args[1] == (1, 7, "status_changed", '{"status": "closed"}')
