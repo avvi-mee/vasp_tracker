@@ -81,7 +81,7 @@ def test_trc20_usdt_on_tron_is_parsed(mock_get):
     """The single most important case for Indian investigations."""
     row = {
         "transaction_id": "0xtrc", "from_address": "TFrom", "to_address": "TTo",
-        "quant": "226000000000", "block_ts": 1700000000, "block": 55,
+        "quant": "226000000000", "block_ts": 1700000000000, "block": 55,  # Tronscan gives ms, not s
         "contract_address": "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t",
         "tokenInfo": {"tokenAbbr": "USDT", "tokenDecimal": 6},
     }
@@ -98,6 +98,11 @@ def test_trc20_usdt_on_tron_is_parsed(mock_get):
     assert amount(trc20[0]) == 226_000.0
     # Base58 Tron addresses must not be lowercased -- that corrupts them.
     assert trc20[0]["from_addr"] == "TFrom"
+    # Tronscan gives milliseconds; every other chain client gives seconds.
+    # Left unconverted this silently corrupts anything sorting/rendering by
+    # time across chains -- live-verified against a real address (13-digit
+    # values), not assumed.
+    assert trc20[0]["timestamp"] == 1700000000
 
 
 def test_asset_key_separates_same_symbol_on_different_contracts():

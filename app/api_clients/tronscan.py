@@ -24,6 +24,17 @@ import requests
 BASE_URL = "https://apilist.tronscanapi.com/api"
 TRX_DECIMALS = 6  # SUN per TRX is 10**6, not 10**18 -- Tron is not EVM-scaled
 
+
+def _to_unix_seconds(ms_or_none: int | None) -> int | None:
+    """Tronscan's timestamps (both `timestamp` and `block_ts`) are Unix
+    milliseconds -- confirmed live (13-digit values) -- while every other
+    chain client in this project (Etherscan, Solana/Helius, Blockchair) gives
+    Unix seconds. Left unconverted, this silently corrupted anything that
+    reads timestamps across chains (sorting by recency, rendering a date).
+    Normalize once, here, rather than have every caller guess which chain
+    it's looking at."""
+    return ms_or_none // 1000 if ms_or_none is not None else None
+
 # Tronscan caps `start + limit` at 10,000.
 PAGE_SIZE = 200
 MAX_OFFSET = 10_000
@@ -69,7 +80,7 @@ def _native(rows: list[dict]) -> list[dict]:
         out.append({
             "tx_hash": tx_hash,
             "block_number": tx.get("block"),
-            "timestamp": tx.get("timestamp"),
+            "timestamp": _to_unix_seconds(tx.get("timestamp")),
             "from_addr": owner,       # Tron addresses are base58, not lowercased like hex
             "to_addr": to,
             "value_wei": int(amount),  # SUN, the Tron equivalent of wei
@@ -98,7 +109,7 @@ def _trc20(rows: list[dict]) -> list[dict]:
         out.append({
             "tx_hash": tx_hash,
             "block_number": tx.get("block"),
-            "timestamp": tx.get("block_ts") or tx.get("timestamp"),
+            "timestamp": _to_unix_seconds(tx.get("block_ts") or tx.get("timestamp")),
             "from_addr": frm,
             "to_addr": to,
             "value_wei": value,
