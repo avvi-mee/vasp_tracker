@@ -11,6 +11,14 @@ live-tested against the real API, since no key has been provisioned yet.
 Written from confirmed documentation, not guessed, but flag this as the
 one chain client in this codebase that hasn't been exercised against a
 real response — verify the field names hold before relying on it.
+
+Native BNB only (category=["external"]) — BEP-20 token transfers
+(category=["erc20"], per NodeReal's docs) are the same gap the other EVM
+clients had before Phase A, deliberately not added blind: guessing the
+token-transfer field names without a real response to check them against
+risks shipping the exact silent-wrong-shape bug that motivated fixing
+etherscan.py/tronscan.py in the first place. Add it once a key exists to
+verify against.
 """
 import os
 import requests
@@ -59,5 +67,9 @@ def fetch_transactions(address: str, api_key: str | None = None, max_records: in
             "to_addr": to.lower(),
             "value_wei": value_wei,
             "asset_type": "BNB",
+            "asset_symbol": "BNB",
+            "asset_contract": "",
+            "decimals": 18,
+            "transfer_type": "native",
         })
     return normalized

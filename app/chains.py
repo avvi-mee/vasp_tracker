@@ -6,6 +6,7 @@ from app.api_clients.etherscan import fetch_transactions as fetch_evm, ETH_CHAIN
 from app.api_clients.tronscan import fetch_transactions as fetch_tron
 from app.api_clients.solana import fetch_transactions as fetch_solana
 from app.api_clients.blockchair import fetch_transactions as fetch_bitcoin
+from app.api_clients.bsctrace import fetch_transactions as fetch_bnb
 
 CHAINS = {
     "Ethereum": {"enabled": True, "currency": "ETH",
@@ -18,5 +19,9 @@ CHAINS = {
     # req/day) — fine for a demo, not for volume; set BLOCKCHAIR_API_KEY to
     # raise the ceiling. No common-input-ownership clustering yet (research/06).
     "Bitcoin": {"enabled": True, "currency": "BTC", "fetch": lambda a: fetch_bitcoin(a)},
-    "BNB Chain — coming soon": {"enabled": False},
+    # Enabled even without NODEREAL_API_KEY provisioned yet: fetch_bnb raises
+    # a clear RuntimeError ("set NODEREAL_API_KEY...") that both main.py and
+    # app/api/main.py already catch and surface — failing loud with an honest
+    # message beats hiding a working adapter behind "coming soon".
+    "BNB Chain": {"enabled": True, "currency": "BNB", "fetch": lambda a: fetch_bnb(a)},
 }
