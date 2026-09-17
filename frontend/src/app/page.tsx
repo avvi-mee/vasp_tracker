@@ -22,6 +22,7 @@ import { ExposureWheel } from "@/components/ExposureWheel";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { DetailDrawer } from "@/components/DetailDrawer";
 import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
+import { NavBar } from "@/components/NavBar";
 import { entityPlainLabel } from "@/lib/entityColors";
 import type { Officer } from "@/lib/auth";
 
@@ -100,6 +101,7 @@ function HomeContent({ officer }: { officer: Officer }) {
       </header>
 
       <OfficerBar officer={officer} />
+      <NavBar />
 
       <form onSubmit={runTrace} className="flex flex-col gap-3 sm:flex-row">
         <input

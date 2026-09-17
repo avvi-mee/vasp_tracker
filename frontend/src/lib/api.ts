@@ -143,6 +143,58 @@ export const getCoverage = () => request<Record<string, number>>("/v1/coverage")
 export const traceWallet = (body: TraceRequest) =>
   request<TraceResponse>("/v1/trace", { method: "POST", body: JSON.stringify(body) });
 
+export interface Case {
+  id: number;
+  seed_address: string;
+  chain: string;
+  entity_type: string | null;
+  label: string | null;
+  confidence: number | null;
+  hop_count: number | null;
+  path: string[] | null;
+  compliance_status: string | null;
+  compliance_detail: string | null;
+  risk_flag: boolean;
+  risk_level: "none" | "low" | "medium" | "high";
+  risk_reason: string | null;
+  status: "open" | "pending" | "closed";
+  tags: string[];
+  officer_id: number | null;
+  ncrp_ack_number: string | null;
+  cctns_fir_number: string | null;
+  sahyog_status: "draft" | "ready_for_submission" | "submitted" | "acknowledged" | "fulfilled" | null;
+  sahyog_instrument: string | null;
+  sahyog_draft: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface CaseEvent {
+  id: number;
+  officer_id: number | null;
+  action: string;
+  detail: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CaseDetail extends Case {
+  events: CaseEvent[];
+}
+
+export const getCases = (limit = 200) => request<Case[]>(`/v1/cases?limit=${limit}`);
+
+export const getCase = (id: number) => request<CaseDetail>(`/v1/cases/${id}`);
+
+export const updateCase = (
+  id: number,
+  patch: Partial<Pick<Case, "status" | "tags" | "ncrp_ack_number" | "cctns_fir_number">>
+) => request<CaseDetail>(`/v1/cases/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
+
+export const generateSahyogDraft = (id: number) =>
+  request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "POST" });
+
+export const updateSahyogStatus = (id: number, status: string) =>
+  request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "PATCH", body: JSON.stringify({ status }) });
+
 /** Fetches the s.63 evidence zip and triggers a browser download — the
  * sandbox blocks a plain <a href> to a POST endpoint, so this does the
  * fetch-as-blob dance itself. */
