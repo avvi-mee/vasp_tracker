@@ -23,6 +23,18 @@ class RiskAssessment:
 
 SANCTIONS_KEYWORDS = ("ofac", "sanction", "sdn")  # matched against label text, case-insensitive
 
+# GraphSense's real category vocabulary (checked against the vendored tag
+# packs, not guessed): "mixer" never actually appears — real mixer packs
+# (Tornado Cash, Blender.io, Wasabi, Samourai, Sinbad...) are tagged
+# "mixing_service" or "coinjoin". An exact match on "mixer" alone silently
+# missed all of them, scoring real mixers as low-risk "unattributed."
+MIXER_CATEGORIES = {"mixer", "mixing_service", "coinjoin"}
+# Darknet markets (e.g. Hydra Market, confirmed present in the vendored
+# data) are tagged "market" — the problem statement names "darknet
+# activities" explicitly, so this gets its own high-severity case rather
+# than falling into case 5's generic "no specific rule" bucket.
+DARKNET_MARKET_CATEGORIES = {"market"}
+
 
 def assess(trace_result) -> RiskAssessment:
     # 1. Does the trace path pass through any known sanctioned/exploit address (our small curated
@@ -51,12 +63,25 @@ def assess(trace_result) -> RiskAssessment:
         )
 
     # 3. Mixer — also high severity: the whole point of a mixer is obscuring the trail.
-    if trace_result.entity_type == "mixer":
+    #    Matches the curated known_mixers.py list (literal "mixer") and any
+    #    GraphSense-labeled mixing service (see MIXER_CATEGORIES above).
+    entity_category = (trace_result.entity_type or "").lower()
+    if entity_category in MIXER_CATEGORIES:
         return RiskAssessment(
             compliance_status="n/a",
             compliance_detail="Trail leads to a mixer, not a VASP — compliance check doesn't apply.",
             risk_flag=True, risk_level="high",
             risk_reason="Funds passed through a known mixer/tumbler — likely intentional obfuscation.",
+        )
+
+    # 3b. Darknet market — same severity tier as a mixer, and one of the
+    #     problem statement's own named categories.
+    if entity_category in DARKNET_MARKET_CATEGORIES:
+        return RiskAssessment(
+            compliance_status="n/a",
+            compliance_detail="Trail leads to a darknet market, not a VASP — compliance check doesn't apply.",
+            risk_flag=True, risk_level="high",
+            risk_reason=f"Funds reached a labeled darknet market ({trace_result.label}).",
         )
 
     # 4. Labeled exchange — severity follows its FIU-IND compliance status.

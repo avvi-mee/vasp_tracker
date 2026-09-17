@@ -82,6 +82,34 @@ def test_ofac_labeled_address_is_high_risk_even_with_entity_type_user():
     assert "OFAC" in risk.risk_reason
 
 
+def test_graphsense_mixing_service_label_is_high_risk_not_just_the_curated_mixer_string():
+    """Regression test: GraphSense's real vendored tag packs (Tornado Cash,
+    Blender.io, Wasabi, Samourai, Sinbad...) use category "mixing_service" or
+    "coinjoin", never the literal string "mixer" — only known_mixers.py's one
+    hand-curated address produces that. Before this fix, every one of those
+    real labeled mixers fell through to the generic low-risk case."""
+    result = _fake_result(["0xaaa"], "mixing_service", "Blender.io")
+    risk = assess(result)
+    assert risk.risk_flag is True
+    assert risk.risk_level == "high"
+
+    result = _fake_result(["0xaaa"], "coinjoin", "Wasabi Wallet")
+    risk = assess(result)
+    assert risk.risk_level == "high"
+
+
+def test_darknet_market_label_is_high_risk():
+    """GraphSense tags darknet markets (e.g. Hydra Market, confirmed present
+    in the vendored data) with category "market" — the problem statement
+    names "darknet activities" explicitly, so this needs its own high-risk
+    case rather than falling into the generic low-risk 'other label' bucket."""
+    result = _fake_result(["0xaaa"], "market", "Hydra Market")
+    risk = assess(result)
+    assert risk.risk_flag is True
+    assert risk.risk_level == "high"
+    assert "darknet market" in risk.risk_reason.lower()
+
+
 def test_labeled_non_exchange_entity_is_low_risk_not_falsely_unmatched():
     """A label WAS found (e.g. a DeFi protocol), just not a category we
     have specific risk rules for — should say so, not claim no match."""
