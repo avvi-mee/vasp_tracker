@@ -164,3 +164,34 @@ def test_bundle_contains_all_four_documents_and_verifies_end_to_end():
         shipped = z.read(pack.record_filename)
         assert hashlib.sha256(shipped).hexdigest() == pack.record_sha256
         assert "FIR 123/2026" in z.read("CERTIFICATE-PART-A.txt").decode("utf-8")
+
+
+def test_a_behaviour_based_risk_level_carries_its_behaviour_into_the_record():
+    """If the certificate asserts HIGH RISK because of how the wallet behaves,
+    the behaviour — and the arithmetic behind it — has to be inside the file
+    being certified. Otherwise the record states a conclusion whose entire
+    basis sits outside the evidence, and a defence expert has nothing to
+    re-derive or contest."""
+    from app.graph.typology import Typology
+
+    typologies = [Typology(
+        name="many_to_one_funnel", title="Many-to-one funnel (collection wallet)",
+        severity="high", confidence=0.88,
+        explanation="16 different addresses paid into this wallet.",
+        stats={"distinct_funders": 16, "distinct_destinations": 1},
+        evidence=["0xvictim1", "0xvictim2"],
+    )]
+    r = _result()
+    record = build_record("ETH", r, assess(r, typologies), typologies=typologies)
+
+    assert record["risk_assessment"]["basis"] == "behaviour"
+    finding = record["behavioural_findings"][0]
+    assert finding["pattern"] == "many_to_one_funnel"
+    assert finding["measurements"]["distinct_funders"] == 16
+    assert finding["evidence"] == ["0xvictim1", "0xvictim2"]
+
+
+def test_the_record_is_unchanged_when_no_typology_fired():
+    """No empty key, so a quiet wallet's hash doesn't shift for nothing."""
+    r = _result()
+    assert "behavioural_findings" not in build_record("ETH", r, assess(r))

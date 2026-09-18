@@ -246,7 +246,8 @@ def certificate(req: TraceRequest, officer: Officer = Depends(get_current_office
     record + Part A + Part B + hash report) as a direct download."""
     chain, _chain_cfg, result, risk, typologies, _seed = _run_trace(req)
     pack, bundle = build_certificate_bundle(
-        chain, result, risk, case_reference=req.case_reference, analyst_note=req.analyst_note)
+        chain, result, risk, case_reference=req.case_reference,
+        analyst_note=req.analyst_note, typologies=typologies)
     filename = f"s63-evidence-{result.seed_address[:10]}.zip"
     _log_action_safely(officer.id, "certificate", result.seed_address,
                        {"case_reference": req.case_reference, "record_sha256": pack.record_sha256})

@@ -75,7 +75,7 @@ def _jsonable(value):
 
 
 def build_record(chain: str, result, risk, case_reference: str = "",
-                 analyst_note: str = "") -> dict:
+                 analyst_note: str = "", typologies=()) -> dict:
     """Freeze the trace findings into the structure that will be hashed.
 
     Deliberately excludes anything that changes between runs of the same
@@ -111,6 +111,9 @@ def build_record(chain: str, result, risk, case_reference: str = "",
         "risk_assessment": {
             "risk_level": risk.risk_level,
             "risk_reason": risk.risk_reason,
+            # Which question the level answers: what the funds reached
+            # ("trail") or how the subject wallet behaves ("behaviour").
+            "basis": getattr(risk, "basis", "trail"),
             "compliance_status": risk.compliance_status,
             "compliance_detail": risk.compliance_detail,
         },
@@ -118,6 +121,18 @@ def build_record(chain: str, result, risk, case_reference: str = "",
     }
     if getattr(result, "deposit", None):
         record["deposit_address_finding"] = _jsonable(result.deposit)
+    if typologies:
+        # A risk level reached on behaviour must carry the behaviour into the
+        # certified record. Otherwise the certificate asserts a conclusion
+        # whose entire basis sits outside the evidence it certifies — and the
+        # arithmetic (funder counts, hold times, split variance) is precisely
+        # what a defence expert is entitled to re-derive and contest.
+        record["behavioural_findings"] = [
+            {"pattern": t.name, "title": t.title, "severity": t.severity,
+             "confidence": t.confidence, "basis": t.explanation,
+             "measurements": _jsonable(t.stats), "evidence": list(t.evidence)}
+            for t in typologies
+        ]
     return _jsonable(record)
 
 
@@ -134,8 +149,8 @@ def sha256_hex(text: str) -> str:
 
 
 def build_evidence_pack(chain: str, result, risk, case_reference: str = "",
-                        analyst_note: str = "") -> EvidencePack:
-    record = build_record(chain, result, risk, case_reference, analyst_note)
+                        analyst_note: str = "", typologies=()) -> EvidencePack:
+    record = build_record(chain, result, risk, case_reference, analyst_note, typologies)
     record_json = canonical_json(record)
     short = result.seed_address[:10]
     return EvidencePack(
@@ -340,10 +355,10 @@ disclose.
 
 
 def build_certificate_bundle(chain: str, result, risk, case_reference: str = "",
-                             analyst_note: str = "") -> tuple[EvidencePack, bytes]:
+                             analyst_note: str = "", typologies=()) -> tuple[EvidencePack, bytes]:
     """Returns the pack plus a zip: the certified record, both certificate
     parts, and the hash report."""
-    pack = build_evidence_pack(chain, result, risk, case_reference, analyst_note)
+    pack = build_evidence_pack(chain, result, risk, case_reference, analyst_note, typologies)
     record = json.loads(pack.record_json)
 
     buffer = io.BytesIO()
