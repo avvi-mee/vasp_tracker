@@ -34,6 +34,15 @@ MATERIALITY_SHARE = 0.10
 # layer exists yet, see the plan's Phase B step 7), not just compute.
 MAX_BRANCHES_PER_HOP = 3
 MAX_ACTIVE_BRANCHES = 8
+# Hard ceiling on address lookups per trace. Raising max_hops from 4 to 12
+# (real laundering chains are far longer than 4) multiplies the worst case by
+# three, and every lookup is a real, rate-limited API call — so bound the cost
+# that actually matters instead of the hop count that only proxies for it.
+# Branches cut short by this are reported in `caveats`, never hidden. In
+# practice it rarely binds: a branch stops the moment it hits a labeled
+# address, which since chain-native tags landed is usually hop 1 or 2.
+MAX_FETCHES = 60
+DEFAULT_MAX_HOPS = 12
 
 
 @dataclass
@@ -83,6 +92,13 @@ class TraceResult:
     # frontier cap — distinct from Candidate.reason, which explains one path's
     # own outcome. Empty for the common case where nothing was dropped.
     caveats: list[str] = field(default_factory=list)
+    # Addresses the block explorer itself flags as risky, restricted to ones
+    # actually on a followed path. Corroboration for risk.py, and something
+    # the graph can highlight — never a verdict on its own.
+    explorer_flagged: list[str] = field(default_factory=list)
+    # How many hops the search was allowed, so the officer can tell
+    # "no VASP within reach" from "we stopped looking".
+    max_hops: int = 0
 
 
 def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
@@ -114,10 +130,11 @@ def trace_to_nearest_entity(
     fetch_transactions_fn,
     labels_lookup: dict,
     mixers_lookup: dict,
-    max_hops: int = 4,
+    max_hops: int = DEFAULT_MAX_HOPS,
 ) -> TraceResult:
     """fetch_transactions_fn(address) -> list of normalized tx dicts
     (see app/api_clients/etherscan.py for the shape)."""
+    from app.data.chain_native_labels import harvest, harvest_risk_flags
     from app.data.tagpacks import lookup_address  # local import avoids a hard circular dep
 
     seed_address = _normalize(seed_address)
@@ -127,6 +144,14 @@ def trace_to_nearest_entity(
     frontier = [_Branch([seed_address], [], None, 1.0)]
     terminals: list[Candidate] = []
     pruned_count = 0
+    # Labels the explorer published inside the transactions we fetch anyway.
+    # Kept separate from `labels_lookup` and consulted only after it, so a
+    # curated Indian-VASP or GraphSense match always wins over a third-party
+    # convenience tag. See app/data/chain_native_labels.py.
+    discovered: dict[tuple[str, str], dict] = {}
+    explorer_flags: dict[str, bool] = {}
+    fetch_count = 0
+    budget_exhausted = False
 
     for hop in range(max_hops + 1):
         next_frontier: list[_Branch] = []
@@ -143,7 +168,8 @@ def trace_to_nearest_entity(
                     branch.followed_asset, None, branch.value_share))
                 continue
 
-            label_rec = lookup_address(labels_lookup, currency, current)
+            label_rec = (lookup_address(labels_lookup, currency, current)
+                         or lookup_address(discovered, currency, current))
             if label_rec:
                 entity_type = label_rec.get("category") or "exchange"
                 # The hop immediately before an exchange is the candidate
@@ -170,7 +196,21 @@ def trace_to_nearest_entity(
 
         for branch in needs_fetch:
             current = branch.path[-1]
+            if fetch_count >= MAX_FETCHES:
+                terminals.append(Candidate(
+                    branch.path, hop, "unknown", None, 0.0, None,
+                    f"search budget ({MAX_FETCHES} address lookups) exhausted before this branch "
+                    f"could be followed further",
+                    branch.followed_asset, None, branch.value_share))
+                budget_exhausted = True
+                continue
+            fetch_count += 1
             txs = fetch_transactions_fn(current)
+            # The response that tells us where the money went also tells us who
+            # the explorer thinks owns the far end. Read it before ranking, so
+            # the next hop's label check can see it.
+            discovered.update(harvest(txs, currency))
+            explorer_flags.update(harvest_risk_flags(txs))
             outgoing = [t for t in txs
                         if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]
             if not outgoing:
@@ -266,10 +306,18 @@ def trace_to_nearest_entity(
             f"{pruned_count} branch(es) below the top-{MAX_ACTIVE_BRANCHES} by value share were "
             f"not followed — this trace's coverage is not exhaustive, and a deliberately small "
             f"split (structuring) is exactly what this limit could miss.")
+    if budget_exhausted:
+        caveats.append(
+            f"The search budget of {MAX_FETCHES} address lookups was reached, so at least one "
+            f"branch was left unfollowed. Re-run with a narrower asset or a shorter hop limit to "
+            f"spend that budget on fewer branches.")
+
+    on_path = {addr for c in terminals for addr in c.path}
+    flagged = sorted(a for a in on_path if explorer_flags.get(a))
 
     return TraceResult(
         seed_address=seed_address, path=best.path, graph=g, hop_count=best.hop_count,
         entity_type=best.entity_type, label=best.label, confidence=best.confidence,
         source=best.source, reason=best.reason, asset=best.asset, deposit=best.deposit,
-        candidates=terminals, caveats=caveats,
+        candidates=terminals, caveats=caveats, explorer_flagged=flagged, max_hops=max_hops,
     )

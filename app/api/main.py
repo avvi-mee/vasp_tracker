@@ -53,7 +53,8 @@ from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import SeedExposure, compute_exposure, compute_seed_exposure
 from app.graph.risk import RiskAssessment, assess
-from app.graph.trace import TraceResult, trace_to_nearest_entity
+from app.graph.trace import DEFAULT_MAX_HOPS, TraceResult, trace_to_nearest_entity
+from app.graph.typology import detect as detect_typologies
 from app.sahyog.gateway import build_disclosure_request
 
 app = FastAPI(title="VASP Trace API", version="1.0",
@@ -120,6 +121,10 @@ class TraceRequest(BaseModel):
     chain: str | None = None  # omit to auto-detect from address format
     case_reference: str = ""
     analyst_note: str = ""
+    # Real laundering chains run well past 4 hops, which is what this was
+    # pinned to. Capped at 20 so a single request can't be turned into an
+    # unbounded crawl; the real cost ceiling is trace.MAX_FETCHES.
+    max_hops: int = Field(default=DEFAULT_MAX_HOPS, ge=1, le=20)
 
 
 def _run_trace(req: TraceRequest):
@@ -135,12 +140,19 @@ def _run_trace(req: TraceRequest):
         result = trace_to_nearest_entity(
             seed_address=req.address, currency=chain_cfg["currency"],
             fetch_transactions_fn=chain_cfg["fetch"],
-            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=4,
+            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=req.max_hops,
         )
     except Exception as exc:
         raise HTTPException(502, f"Trace failed: {exc}")
-    risk = assess(result)
-    return chain, chain_cfg, result, risk
+
+    # The seed's own transactions, both directions. The trace already fetched
+    # these at hop 0 and app/cache.py holds them, so this is a dict lookup, not
+    # a second network call — and it is what the behavioural detectors and the
+    # receiving/sending exposure wheel both read.
+    seed_txs = _seed_txs(result, chain_cfg)
+    typologies = detect_typologies(result, seed_txs, asset=result.asset)
+    risk = assess(result, typologies)
+    return chain, chain_cfg, result, risk, typologies, seed_txs
 
 
 def _edges(result) -> list[dict]:
@@ -153,31 +165,31 @@ def _edges(result) -> list[dict]:
     ]
 
 
-def _seed_exposure_json(result, chain_cfg: dict) -> dict:
-    """Best-effort — re-fetches the seed's own transactions (both
-    directions) to compute receiving/sending exposure. A second network
-    call for the same address the trace's own first hop already fetched
-    and discarded half of; not caching it yet is a known, accepted
-    ponytail — Redis caching is already a deferred fast-follow for exactly
-    this kind of repeat fetch, and failure here must never break the trace
-    itself, which is why this is wrapped and swallowed, not raised."""
+def _seed_txs(result, chain_cfg: dict) -> list[dict]:
+    """The seed's own transactions in both directions. Served from
+    app/cache.py — the trace's first hop fetched exactly this a moment ago.
+    Failure here must never break a trace that already succeeded, so it is
+    swallowed and degrades to "no behavioural analysis", not to a 502."""
     try:
-        seed_txs = chain_cfg["fetch"](result.seed_address)
-        seed_exposure = compute_seed_exposure(
-            result.seed_address, seed_txs, chain_cfg["currency"], _labels(), KNOWN_MIXERS, asset=result.asset)
-        return _jsonable(seed_exposure)
+        return chain_cfg["fetch"](result.seed_address)
     except Exception:
-        logger.exception("Seed exposure fetch failed for %s", result.seed_address)
-        return _jsonable(SeedExposure())
+        logger.exception("Seed transaction fetch failed for %s", result.seed_address)
+        return []
 
 
-def _trace_json(result, chain_cfg: dict) -> dict:
+def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=()) -> dict:
     currency = chain_cfg["currency"]
     payload = _jsonable(result)
     payload.pop("graph", None)  # str(DiGraph) is noise, not data
     payload["edges"] = _edges(result)
     payload["exposure"] = _jsonable(compute_exposure(result, currency, _labels(), KNOWN_MIXERS))
-    payload["seed_exposure"] = _seed_exposure_json(result, chain_cfg)
+    payload["typologies"] = [_jsonable(t) for t in typologies]
+    try:
+        payload["seed_exposure"] = _jsonable(compute_seed_exposure(
+            result.seed_address, list(seed_txs), currency, _labels(), KNOWN_MIXERS, asset=result.asset))
+    except Exception:
+        logger.exception("Seed exposure failed for %s", result.seed_address)
+        payload["seed_exposure"] = _jsonable(SeedExposure())
     return payload
 
 
@@ -193,7 +205,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     """Trace a wallet to its nearest exchange/VASP. Auto-saves a case row
     (best-effort — a missing DATABASE_URL degrades to case_id: null, same as
     the Streamlit UI does)."""
-    chain, chain_cfg, result, risk = _run_trace(req)
+    chain, chain_cfg, result, risk, typologies, seed_txs = _run_trace(req)
 
     case_id = None
     try:
@@ -211,7 +223,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     return {
         "chain": chain,
         "case_id": case_id,
-        "trace": _trace_json(result, chain_cfg),
+        "trace": _trace_json(result, chain_cfg, typologies, seed_txs),
         "risk": _jsonable(risk),
         "sahyog_draft": build_disclosure_request(chain, result, risk, analyst_note=req.analyst_note),
     }
@@ -221,7 +233,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
 def certificate(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     """Re-runs the trace and returns the s.63 BSA evidence pack (zip:
     record + Part A + Part B + hash report) as a direct download."""
-    chain, _chain_cfg, result, risk = _run_trace(req)
+    chain, _chain_cfg, result, risk, typologies, _seed = _run_trace(req)
     pack, bundle = build_certificate_bundle(
         chain, result, risk, case_reference=req.case_reference, analyst_note=req.analyst_note)
     filename = f"s63-evidence-{result.seed_address[:10]}.zip"
@@ -384,7 +396,7 @@ def watchlist_check(watch_id: int, officer: Officer = Depends(get_current_office
         result = trace_to_nearest_entity(
             seed_address=watch["address"], currency=chain_cfg["currency"],
             fetch_transactions_fn=chain_cfg["fetch"],
-            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=4,
+            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=DEFAULT_MAX_HOPS,
         )
     except Exception as exc:
         raise HTTPException(502, f"Re-check failed: {exc}")

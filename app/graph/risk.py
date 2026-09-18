@@ -3,7 +3,7 @@ sanctioned-address watchlist into one risk assessment. Kept separate from
 trace.py on purpose: tracing finds the entity, this module judges it —
 different jobs, both worth testing independently.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from app.data.fiu_compliance import check_compliance
 from app.data.known_illicit import check_illicit
@@ -19,6 +19,11 @@ class RiskAssessment:
     risk_flag: bool                 # True whenever risk_level != "none" — kept for simple yes/no checks
     risk_level: str = "none"        # "none" | "low" | "medium" | "high" — see RISK_LEVELS
     risk_reason: str | None = None
+    # Which of the two questions below drove risk_level, and the behavioural
+    # patterns that contributed. Shown to the officer so a verdict is never a
+    # bare colour with no stated basis.
+    basis: str = "trail"            # "trail" | "behaviour"
+    typologies: list[str] = field(default_factory=list)
 
 
 SANCTIONS_KEYWORDS = ("ofac", "sanction", "sdn")  # matched against label text, case-insensitive
@@ -36,7 +41,17 @@ MIXER_CATEGORIES = {"mixer", "mixing_service", "coinjoin"}
 DARKNET_MARKET_CATEGORIES = {"market"}
 
 
-def assess(trace_result) -> RiskAssessment:
+def _explorer_flags_on_path(trace_result) -> list[str]:
+    """Addresses on this trail that the block explorer itself marks risky.
+    An unexplained third-party boolean: good enough to raise attention and
+    demand a look, never good enough to be a verdict by itself — so it only
+    ever escalates the two cases below that would otherwise say "low".
+    """
+    flagged = set(getattr(trace_result, "explorer_flagged", None) or ())
+    return [a for a in trace_result.path if a in flagged]
+
+
+def _assess_trail(trace_result) -> RiskAssessment:
     # 1. Does the trace path pass through any known sanctioned/exploit address (our small curated
     #    watchlist)? Highest severity — this isn't a compliance question, it's a direct watchlist hit.
     for addr in trace_result.path:
@@ -99,20 +114,81 @@ def assess(trace_result) -> RiskAssessment:
     #    GraphSense categories like "organization", "defi_dex" outside our exchange/mixer handling).
     #    Different from case 6 below — we DO know something about this address, just not its risk
     #    tier, so say that plainly instead of implying no match was found at all.
+    flagged = _explorer_flags_on_path(trace_result)
     if trace_result.label:
         return RiskAssessment(
             compliance_status="unknown",
             compliance_detail=f"Matched '{trace_result.label}' (category: {trace_result.entity_type}), "
                               f"but no specific compliance/risk rule applies to this category yet.",
-            risk_flag=True, risk_level="low",
-            risk_reason="Labeled entity outside current risk categories — worth analyst review.",
+            risk_flag=True, risk_level="medium" if flagged else "low",
+            risk_reason=(f"Labeled entity outside current risk categories, and the block explorer "
+                         f"flags {len(flagged)} address(es) on this trail as risky — worth analyst review."
+                         if flagged else
+                         "Labeled entity outside current risk categories — worth analyst review."),
         )
 
     # 6. No entity matched at all — genuinely uncertain, not "confirmed clean." Worth a low-severity
     #    flag for analyst attention rather than silently treating "unknown" as "safe."
+    if flagged:
+        return RiskAssessment(
+            compliance_status="unknown",
+            compliance_detail="No entity matched, so no compliance status to check.",
+            risk_flag=True, risk_level="medium",
+            risk_reason=(f"Unattributed trail, and the block explorer independently flags "
+                         f"{len(flagged)} address(es) on it as risky ({', '.join(flagged[:3])}). "
+                         f"Corroboration only — the explorer does not publish its reasoning."),
+        )
     return RiskAssessment(
         compliance_status="unknown",
         compliance_detail="No entity matched, so no compliance status to check.",
         risk_flag=True, risk_level="low",
         risk_reason="No known entity or watchlist match — unattributed trail, not verified safe.",
+    )
+
+
+def assess(trace_result, typologies=()) -> RiskAssessment:
+    """Two different questions, deliberately answered separately and then
+    combined by taking the worse of the two:
+
+      trail      — what did the money reach? A mixer, a sanctioned address, a
+                   darknet market, an FIU-registered exchange? This is what
+                   _assess_trail() has always answered.
+      behaviour  — how does the subject wallet itself behave? Funnelling,
+                   layering, smurfing, peeling (see app/graph/typology.py).
+
+    Conflating the two is what produced the bug this fixes. Before chain-native
+    labels landed, every real address fell through to "no entity matched → LOW"
+    and the tool said LOW RISK to everything. After they landed it got worse in
+    a subtler way: a scam wallet that sweeps victim money straight into Binance
+    reaches an FIU-registered exchange, so the trail question answers "compliant
+    → NONE" — and a wallet funded by 16 victims was scored clean.
+
+    "Where the money went" and "is this wallet dirty" are not the same question.
+    The exchange being compliant is good news about *who to serve a BNSS s.94
+    notice on*, not evidence that the subject is innocent. So behaviour is
+    assessed independently and the higher of the two levels wins, with the
+    basis named either way.
+    """
+    trail = _assess_trail(trace_result)
+    typologies = list(typologies or ())
+    if not typologies:
+        return trail
+
+    from app.graph.typology import highest_severity  # local: typology imports nothing from here
+    behaviour_level = highest_severity(typologies)
+    if RISK_LEVELS.index(behaviour_level) <= RISK_LEVELS.index(trail.risk_level):
+        trail.typologies = [t.name for t in typologies]
+        return trail
+
+    top = typologies[0]
+    return RiskAssessment(
+        compliance_status=trail.compliance_status,
+        compliance_detail=trail.compliance_detail,
+        risk_flag=True,
+        risk_level=behaviour_level,
+        risk_reason=(f"{top.title}: {top.explanation}"
+                     + (f" ({len(typologies) - 1} further pattern(s) also matched.)"
+                        if len(typologies) > 1 else "")),
+        basis="behaviour",
+        typologies=[t.name for t in typologies],
     )

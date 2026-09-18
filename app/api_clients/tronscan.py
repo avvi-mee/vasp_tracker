@@ -23,6 +23,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
+from app.data.chain_native_labels import is_junk
+
 BASE_URL = "https://apilist.tronscanapi.com/api"
 TRX_DECIMALS = 6  # SUN per TRX is 10**6, not 10**18 -- Tron is not EVM-scaled
 
@@ -48,10 +50,28 @@ def _headers(api_key: str | None) -> dict:
     return {"TRON-PRO-API-KEY": api_key} if api_key else {}
 
 
+def _clean_tag(value) -> str | None:
+    """Tronscan's tag fields arrive in two shapes: a plain string on the
+    native endpoint, and a one-key dict on the TRC20 endpoint
+    ({"to_address_tag": "Binance-Hot 7", "to_address_tag_logo": ""}) where
+    the name may be absent entirely. Normalize both to a name or None."""
+    if isinstance(value, dict):
+        value = next((v for k, v in value.items() if not k.endswith("_logo")), None)
+    if not isinstance(value, str) or is_junk(value):
+        return None
+    return value.strip()
+
+
 def _paged(path: str, address: str, headers: dict, max_records: int,
-          address_param: str = "address") -> list[dict]:
-    """Page through a Tronscan list endpoint, honouring its start+limit ceiling."""
+          address_param: str = "address") -> tuple[list[dict], dict]:
+    """Page through a Tronscan list endpoint, honouring its start+limit ceiling.
+
+    Returns (rows, address_info) -- the second is Tronscan's own
+    `normalAddressInfo`, a per-address {"risk": bool} map it returns alongside
+    the rows and that this client used to throw away.
+    """
     collected: list[dict] = []
+    address_info: dict = {}
     start = 0
     while len(collected) < max_records and start < MAX_OFFSET:
         limit = min(PAGE_SIZE, max_records - len(collected), MAX_OFFSET - start)
@@ -61,6 +81,9 @@ def _paged(path: str, address: str, headers: dict, max_records: int,
         })
         resp.raise_for_status()
         payload = resp.json()
+        info = payload.get("normalAddressInfo")
+        if isinstance(info, dict):
+            address_info.update(info)
         # The two endpoints disagree on the field name for the rows array.
         rows = payload.get("data") or payload.get("token_transfers")
         if not isinstance(rows, list) or not rows:
@@ -69,10 +92,19 @@ def _paged(path: str, address: str, headers: dict, max_records: int,
         if len(rows) < limit:
             break
         start += limit
-    return collected[:max_records]
+    return collected[:max_records], address_info
 
 
-def _native(rows: list[dict]) -> list[dict]:
+def _risk_of(address_info: dict, address: str) -> bool | None:
+    """Tronscan's own per-address risk flag. None (not False) when Tronscan
+    said nothing about the address -- "not flagged" and "not assessed" are
+    different claims, and a police tool should not conflate them."""
+    entry = address_info.get(address)
+    return bool(entry.get("risk")) if isinstance(entry, dict) and "risk" in entry else None
+
+
+def _native(rows: list[dict], address_info: dict | None = None) -> list[dict]:
+    address_info = address_info or {}
     out = []
     for tx in rows:
         tx_hash, owner, to, amount = (tx.get("hash"), tx.get("ownerAddress"),
@@ -91,11 +123,19 @@ def _native(rows: list[dict]) -> list[dict]:
             "asset_contract": "",
             "decimals": TRX_DECIMALS,
             "transfer_type": "native",
+            # Tronscan names entities it recognises right here in the response.
+            # This is the nearest-VASP answer the tool exists to find, and it
+            # was being parsed past and discarded until now.
+            "from_label": _clean_tag(tx.get("ownerAddressTag")),
+            "to_label": _clean_tag(tx.get("toAddressTag")),
+            "from_risk": _risk_of(address_info, owner),
+            "to_risk": _risk_of(address_info, to),
         })
     return out
 
 
-def _trc20(rows: list[dict]) -> list[dict]:
+def _trc20(rows: list[dict], address_info: dict | None = None) -> list[dict]:
+    address_info = address_info or {}
     out = []
     for tx in rows:
         info = tx.get("tokenInfo") or {}
@@ -120,6 +160,10 @@ def _trc20(rows: list[dict]) -> list[dict]:
             "asset_contract": tx.get("contract_address") or info.get("tokenId") or "",
             "decimals": int(info.get("tokenDecimal") or 6),
             "transfer_type": "token",
+            "from_label": _clean_tag(tx.get("from_address_tag")),
+            "to_label": _clean_tag(tx.get("to_address_tag")),
+            "from_risk": _risk_of(address_info, frm),
+            "to_risk": _risk_of(address_info, to),
         })
     return out
 
@@ -144,7 +188,12 @@ def fetch_transactions(address: str, api_key: str | None = None,
                        address_param="relatedAddress")
             if include_tokens else None
         )
-        transfers = _native(native_future.result())
+        native_rows, address_info = native_future.result()
+        trc20_rows, trc20_info = trc20_future.result() if trc20_future is not None else ([], {})
+        # Risk is a property of an address, not of the endpoint that mentioned
+        # it, so both endpoints' flags apply to every row.
+        address_info = {**address_info, **trc20_info}
+        transfers = _native(native_rows, address_info)
         if trc20_future is not None:
             # Live-verified with a real key: /api/token_trc20/transfers silently
             # ignores `address` and returns an unrelated global feed instead of
@@ -154,7 +203,7 @@ def fetch_transactions(address: str, api_key: str | None = None,
             # transfers, tagged by Tronscan itself (e.g. "Binance-Hot 11"). This
             # was silently returning noise instead of the queried address's USDT
             # activity — the exact data the Tron adapter exists to see.
-            transfers += _trc20(trc20_future.result())
+            transfers += _trc20(trc20_rows, address_info)
 
     transfers.sort(key=lambda t: (t.get("timestamp") or 0, t["tx_hash"]))
     return transfers
