@@ -196,3 +196,28 @@ def test_quiet_wallet_produces_no_findings():
 
 def test_no_transactions_at_all_is_not_a_crash():
     assert detect(_result(), []) == []
+
+
+def test_a_truncated_history_does_not_print_a_nonsense_forwarding_ratio():
+    """Live: Binance's Tron hot wallet computed 345977% forwarded, because the
+    600-row fetch window caught outbound transfers whose matching inbound ones
+    fell outside it. A police report cannot carry that number."""
+    txs = [_tx("0xin", SEED, 1, 0)]
+    txs += [_tx(SEED, "0xnext", 1000, i * 60 + 30) for i in range(20)]
+
+    layering = next(t for t in detect(_result(), txs) if t.name == "rapid_layering")
+
+    assert layering.stats["sample_truncated"] is True
+    assert "truncated" in layering.explanation
+    assert "%" not in layering.explanation  # no 2,000,000% figure anywhere in the prose
+    assert layering.severity == "medium"  # short holds still shown, strongest reading withheld
+
+
+def test_an_untruncated_sample_still_states_the_ratio():
+    txs = []
+    for i in range(12):
+        txs.append(_tx(f"0xin{i}", SEED, 1000, i * HOUR))
+        txs.append(_tx(SEED, "0xnext", 1000, i * HOUR + 300))
+    layering = next(t for t in detect(_result(), txs) if t.name == "rapid_layering")
+    assert layering.stats["sample_truncated"] is False
+    assert "100% of everything received was forwarded on" in layering.explanation

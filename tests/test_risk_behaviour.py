@@ -87,3 +87,32 @@ def test_an_explorer_risk_flag_lifts_an_otherwise_unattributed_trail():
     assert "explorer" in assess(flagged).risk_reason.lower()
     # ...but only for addresses actually on this trail.
     assert assess(_result(explorer_flagged=["0xelsewhere"])).risk_level == "low"
+
+
+def test_an_exchanges_own_wallet_is_not_called_high_risk_for_behaving_like_one():
+    """Live false positive this fixes: Binance's Tron hot wallet fires
+    rapid_layering at high severity — 25 funders, forwards nearly everything
+    within minutes — because that is exactly what a hot wallet does. The
+    pattern is real and stays on the record; the inference does not follow."""
+    subject_is_the_exchange = _result(
+        path=["0xbinance"], hop_count=0, entity_type="exchange", label="Binance-Hot 7")
+
+    assessment = assess(subject_is_the_exchange, [_typology("rapid_layering", "high")])
+
+    assert assessment.risk_level != "high"
+    assert assessment.basis == "trail"
+    assert assessment.typologies == ["rapid_layering"]  # recorded, not hidden
+    assert "normal operation" in assessment.risk_reason
+
+
+def test_the_same_pattern_one_hop_away_still_escalates():
+    """The suppression is about the subject BEING the service, not about an
+    exchange appearing anywhere on the trail — otherwise every scam wallet
+    that cashes out at an exchange would be excused by reaching one."""
+    suspect_paying_an_exchange = _result(
+        path=["0xsuspect", "0xbinance"], hop_count=1, entity_type="exchange", label="Binance-Hot 7")
+
+    assessment = assess(suspect_paying_an_exchange, [_typology("rapid_layering", "high")])
+
+    assert assessment.risk_level == "high"
+    assert assessment.basis == "behaviour"

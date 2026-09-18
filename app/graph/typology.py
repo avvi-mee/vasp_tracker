@@ -34,6 +34,13 @@ LAYERING_MEDIAN_HOLD = 3600     # seconds; money that rests an hour isn't layeri
 LAYERING_FAST_HOLD = 600
 LAYERING_MIN_SWEEPS = 3
 LAYERING_MIN_FORWARD_RATIO = 0.80
+# Above this, the records we hold cannot account for what left: a busy address
+# is fetched with a record cap (600 rows on Tron, 2000 on the EVM chains), so
+# the window can catch outbound transfers whose matching inbound ones fall
+# outside it. Live example: Binance's Tron hot wallet computed a "345977%
+# forwarded" ratio. Printing that number in a police report would be absurd;
+# the honest statement is that the sample is truncated.
+LAYERING_TRUNCATED_ABOVE = 2.0
 FANOUT_MIN_DESTINATIONS = 8
 FANOUT_HIGH_DESTINATIONS = 20
 FANOUT_MAX_CV = 0.35            # coefficient of variation; near-equal splits
@@ -64,11 +71,11 @@ def _hold_times(incoming: list[dict], outgoing: list[dict]) -> list[int]:
     """For each outgoing transfer, how long since the most recent inbound one.
     Short holds across many transfers are the shape of a pass-through wallet,
     not of someone spending their own money."""
-    in_times = sorted(t["timestamp"] for t in incoming if t.get("timestamp"))
+    in_times = sorted(t["timestamp"] for t in incoming if t.get("timestamp") is not None)
     holds = []
     for out in outgoing:
         out_ts = out.get("timestamp")
-        if not out_ts:
+        if out_ts is None:
             continue
         prior = [t for t in in_times if t <= out_ts]
         if prior:
@@ -110,18 +117,24 @@ def _rapid_layering(seed: str, incoming: list[dict], outgoing: list[dict]) -> Ty
     if med > LAYERING_MEDIAN_HOLD or ratio < LAYERING_MIN_FORWARD_RATIO:
         return None
     fast = med <= LAYERING_FAST_HOLD and len(holds) >= 10
+    truncated = ratio > LAYERING_TRUNCATED_ABOVE
+    forwarding = ("more value left than the records we hold show arriving, so this address's history "
+                  "is truncated by the fetch limit and the forwarding ratio is not meaningful"
+                  if truncated else f"{ratio:.0%} of everything received was forwarded on")
     return Typology(
         name="rapid_layering",
         title="Rapid layering (funds do not rest here)",
-        severity="high" if fast else "medium",
-        confidence=round(min(0.90, 0.45 + 0.02 * len(holds)), 2),
+        # A truncated sample can still show short hold times, but it cannot
+        # support the strongest reading of them.
+        severity="high" if fast and not truncated else "medium",
+        confidence=round(min(0.90, 0.45 + 0.02 * len(holds)) * (0.7 if truncated else 1.0), 2),
         explanation=(
             f"Money left this wallet a median of {med // 60} minute(s) after arriving, across "
-            f"{len(holds)} transfers, and {ratio:.0%} of everything received was forwarded on. "
+            f"{len(holds)} transfers, and {forwarding}. "
             f"A wallet someone actually keeps funds in holds a balance; this one is a conduit. "
             f"Short, repeated hold times are the defining measurable feature of the layering stage."),
         stats={"median_hold_seconds": med, "sweeps": len(holds),
-               "forwarded_ratio": round(ratio, 4)},
+               "forwarded_ratio": round(ratio, 4), "sample_truncated": truncated},
         evidence=[t["tx_hash"] for t in outgoing[:10] if t.get("tx_hash")],
     )
 
@@ -137,7 +150,7 @@ def _fan_out(seed: str, outgoing: list[dict]) -> Typology | None:
     cv = (pstdev(values) / mean) if mean else 0.0
     if cv > FANOUT_MAX_CV:
         return None
-    times = [t["timestamp"] for t in outgoing if t.get("timestamp")]
+    times = [t["timestamp"] for t in outgoing if t.get("timestamp") is not None]
     window = (max(times) - min(times)) if times else 0
     if window > FANOUT_WINDOW_SECONDS:
         return None

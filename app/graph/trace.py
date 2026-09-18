@@ -105,6 +105,12 @@ class TraceResult:
     # exposure, the certificate — would otherwise report "unattributed" about
     # addresses this very trace just named. See app/data/chain_native_labels.py.
     discovered_labels: dict[str, dict] = field(default_factory=dict)
+    # The label for the SUBJECT address itself, when it turns out to have one.
+    # Distinct from `label`, which describes the entity the trail *reached*.
+    # An officer who pastes an exchange's own wallet needs the tool to know
+    # that — otherwise its ordinary high-throughput behaviour gets read as
+    # laundering. See app/graph/risk.py SELF_EXPLAINING_CATEGORIES.
+    subject_entity: dict | None = None
 
 
 def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
@@ -318,6 +324,11 @@ def trace_to_nearest_entity(
             f"branch was left unfollowed. Re-run with a narrower asset or a shorter hop limit to "
             f"spend that budget on fewer branches.")
 
+    # Only resolvable now: an address's own tag arrives inside its own
+    # transactions, which are not fetched until after the hop-0 label check.
+    subject_entity = (lookup_address(labels_lookup, currency, seed_address)
+                      or lookup_address(discovered, currency, seed_address))
+
     on_path = {addr for c in terminals for addr in c.path}
     flagged = sorted(a for a in on_path if explorer_flags.get(a))
 
@@ -327,4 +338,5 @@ def trace_to_nearest_entity(
         source=best.source, reason=best.reason, asset=best.asset, deposit=best.deposit,
         candidates=terminals, caveats=caveats, explorer_flagged=flagged, max_hops=max_hops,
         discovered_labels={address: rec for (_currency, address), rec in discovered.items()},
+        subject_entity=subject_entity,
     )

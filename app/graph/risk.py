@@ -40,6 +40,14 @@ MIXER_CATEGORIES = {"mixer", "mixing_service", "coinjoin"}
 # than falling into case 5's generic "no specific rule" bucket.
 DARKNET_MARKET_CATEGORIES = {"market"}
 
+# Categories whose ordinary business *is* the behaviour the typology
+# detectors look for. Checked live: Binance's own Tron hot wallet fires
+# rapid_layering at high severity — 25 funders, forwards nearly everything
+# within minutes — because that is precisely what a hot wallet does all day.
+# Calling an FIU-registered exchange's operating wallet high-risk for
+# behaving like an exchange would discredit every other finding on the page.
+SELF_EXPLAINING_CATEGORIES = {"exchange", "exchange cluster", "custodian"}
+
 
 def _explorer_flags_on_path(trace_result) -> list[str]:
     """Addresses on this trail that the block explorer itself marks risky.
@@ -172,6 +180,22 @@ def assess(trace_result, typologies=()) -> RiskAssessment:
     trail = _assess_trail(trace_result)
     typologies = list(typologies or ())
     if not typologies:
+        return trail
+
+    # The officer pasted an exchange's own wallet, not a suspect's. The
+    # patterns are real and stay on the record, but they describe that
+    # business operating normally, so they do not escalate. See
+    # SELF_EXPLAINING_CATEGORIES above for the live false positive this fixes.
+    subject = getattr(trace_result, "subject_entity", None) or (
+        {"label": trace_result.label, "category": trace_result.entity_type}
+        if trace_result.hop_count == 0 and trace_result.label else None)
+    if subject and (subject.get("category") or "").lower() in SELF_EXPLAINING_CATEGORIES:
+        trail.typologies = [t.name for t in typologies]
+        trail.risk_reason = (
+            (trail.risk_reason + " " if trail.risk_reason else "")
+            + f"Behavioural patterns were detected ({', '.join(t.name for t in typologies)}) but did "
+              f"not raise the risk level: this address is {subject.get('label')}, and high-throughput "
+              f"pass-through activity is that service's normal operation, not a signal about it.")
         return trail
 
     from app.graph.typology import highest_severity  # local: typology imports nothing from here
