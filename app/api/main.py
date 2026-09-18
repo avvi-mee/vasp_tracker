@@ -18,6 +18,8 @@ from dotenv import load_dotenv
 # was set in .env and still wasn't being picked up until this moved up here.
 load_dotenv()
 
+from concurrent.futures import ThreadPoolExecutor
+
 import jwt as pyjwt
 import networkx as nx
 from fastapi import Depends, FastAPI, HTTPException
@@ -362,8 +364,17 @@ def _case_to_trace_and_risk(case: dict):
 @app.get("/v1/cases/{case_id}")
 def case_detail(case_id: int, officer: Officer = Depends(get_current_officer)):
     case = _require_case(case_id)
-    case["events"] = list_case_events(case_id)
-    case["upi_hops"] = list_upi_hops(case_id)
+    # Three independent reads run one after another used to mean three
+    # sequential round trips to Postgres (~1s+ each even pooled, see
+    # app/data/case_store.py's pool comment — that part of the cost is
+    # network RTT, not connection setup, and pooling alone can't remove it).
+    # They don't depend on each other, so fetch them concurrently instead;
+    # wall time becomes the slowest one, not the sum of both.
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        events_future = pool.submit(list_case_events, case_id)
+        hops_future = pool.submit(list_upi_hops, case_id)
+        case["events"] = events_future.result()
+        case["upi_hops"] = hops_future.result()
     return case
 
 

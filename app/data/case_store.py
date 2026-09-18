@@ -8,8 +8,11 @@ SDK — we only need basic CRUD on one table, not auth/storage/realtime.
 """
 import os
 import json
+import threading
 import psycopg2
 import psycopg2.extras
+import psycopg2.extensions
+import psycopg2.pool
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cases (
@@ -102,11 +105,57 @@ SAHYOG_STATUSES = ("draft", "ready_for_submission", "submitted", "acknowledged",
 CASE_STATUSES = ("open", "pending", "closed")
 
 
+# Measured live: a fresh psycopg2.connect() to Supabase from this environment
+# takes 2-5 SECONDS -- the TCP+TLS handshake and Postgres auth, not the query
+# itself. Every function below used to pay that cost on every call, and a
+# single request touching three of them (e.g. case_detail's
+# get_case + list_case_events + list_upi_hops) paid it three times. A pooled
+# connection is reused instead of reopened, cutting a page load from several
+# seconds to roughly the query time alone.
+#
+# ThreadedConnectionPool specifically (not SimpleConnectionPool, which isn't
+# documented thread-safe): FastAPI runs a plain `def` endpoint in a real OS
+# thread via Starlette's threadpool, so concurrent requests genuinely borrow
+# from this pool from different threads at once.
+_pool: psycopg2.pool.ThreadedConnectionPool | None = None
+_pool_lock = threading.Lock()
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _pool
+    if _pool is None:
+        with _pool_lock:
+            if _pool is None:  # a second thread may have built it while this one waited
+                url = os.environ.get("DATABASE_URL")
+                if not url:
+                    raise RuntimeError("Set DATABASE_URL in your .env file — see .env.example.")
+                _pool = psycopg2.pool.ThreadedConnectionPool(minconn=1, maxconn=10, dsn=url)
+    return _pool
+
+
 def get_connection():
-    url = os.environ.get("DATABASE_URL")
-    if not url:
-        raise RuntimeError("Set DATABASE_URL in your .env file — see .env.example.")
-    return psycopg2.connect(url)
+    return _get_pool().getconn()
+
+
+def _release_connection(conn) -> None:
+    """Returns a connection to the pool instead of closing the socket. A
+    connection released mid-transaction (an exception before the caller's own
+    commit) would otherwise poison the next borrower with "current
+    transaction is aborted" -- rolled back defensively first, best-effort.
+
+    Measured live: unconditionally calling rollback() here cost ~0.18s of its
+    own -- ROLLBACK is a real round trip to Postgres, not a local no-op --
+    and every read-only call (the large majority) was paying it for nothing.
+    get_transaction_status() is answered from state psycopg2 already tracks
+    client-side, no network call, so this skips the round trip whenever the
+    connection is already clean (every success path, which already commits).
+    """
+    try:
+        if conn.get_transaction_status() != psycopg2.extensions.TRANSACTION_STATUS_IDLE:
+            conn.rollback()
+    except Exception:
+        pass
+    _get_pool().putconn(conn)
 
 
 def init_db(conn=None) -> None:
@@ -118,7 +167,7 @@ def init_db(conn=None) -> None:
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def save_case(chain: str, trace_result, risk_assessment, officer_id: int | None = None, conn=None) -> int:
@@ -152,7 +201,7 @@ def save_case(chain: str, trace_result, risk_assessment, officer_id: int | None 
         return case_id
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def list_cases(limit: int = 50, conn=None) -> list[dict]:
@@ -164,7 +213,7 @@ def list_cases(limit: int = 50, conn=None) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def get_case(case_id: int, conn=None) -> dict | None:
@@ -177,7 +226,7 @@ def get_case(case_id: int, conn=None) -> dict | None:
             return dict(row) if row else None
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def update_case_status(case_id: int, status: str, officer_id: int | None, conn=None) -> None:
@@ -192,7 +241,7 @@ def update_case_status(case_id: int, status: str, officer_id: int | None, conn=N
         log_case_event(case_id, officer_id, "status_changed", {"status": status}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def update_case_tags(case_id: int, tags: list[str], officer_id: int | None, conn=None) -> None:
@@ -205,7 +254,7 @@ def update_case_tags(case_id: int, tags: list[str], officer_id: int | None, conn
         log_case_event(case_id, officer_id, "tags_changed", {"tags": tags}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def update_case_legal_refs(case_id: int, ncrp_ack_number: str | None, cctns_fir_number: str | None,
@@ -226,7 +275,7 @@ def update_case_legal_refs(case_id: int, ncrp_ack_number: str | None, cctns_fir_
                        {"ncrp_ack_number": ncrp_ack_number, "cctns_fir_number": cctns_fir_number}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def save_sahyog_draft(case_id: int, instrument: str, draft: dict, officer_id: int | None, conn=None) -> None:
@@ -245,7 +294,7 @@ def save_sahyog_draft(case_id: int, instrument: str, draft: dict, officer_id: in
         log_case_event(case_id, officer_id, "sahyog_draft_generated", {"instrument": instrument}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def update_sahyog_status(case_id: int, status: str, officer_id: int | None, conn=None) -> None:
@@ -263,7 +312,7 @@ def update_sahyog_status(case_id: int, status: str, officer_id: int | None, conn
         log_case_event(case_id, officer_id, "sahyog_status_changed", {"status": status}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def log_case_event(case_id: int, officer_id: int | None, action: str,
@@ -279,7 +328,7 @@ def log_case_event(case_id: int, officer_id: int | None, action: str,
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def list_case_events(case_id: int, conn=None) -> list[dict]:
@@ -291,7 +340,7 @@ def list_case_events(case_id: int, conn=None) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def add_upi_hop(case_id: int, hop: dict, officer_id: int | None, conn=None) -> int:
@@ -324,7 +373,7 @@ def add_upi_hop(case_id: int, hop: dict, officer_id: int | None, conn=None) -> i
         return hop_id
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def list_upi_hops(case_id: int, conn=None) -> list[dict]:
@@ -336,7 +385,7 @@ def list_upi_hops(case_id: int, conn=None) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def delete_upi_hop(case_id: int, hop_id: int, officer_id: int | None, conn=None) -> None:
@@ -349,7 +398,7 @@ def delete_upi_hop(case_id: int, hop_id: int, officer_id: int | None, conn=None)
         log_case_event(case_id, officer_id, "upi_hop_removed", {"hop_id": hop_id}, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def create_officer(username: str, password_hash: str, role: str, display_name: str, conn=None) -> int:
@@ -370,7 +419,7 @@ def create_officer(username: str, password_hash: str, role: str, display_name: s
         return officer_id
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def get_officer_by_username(username: str, conn=None) -> dict | None:
@@ -383,7 +432,7 @@ def get_officer_by_username(username: str, conn=None) -> dict | None:
             return dict(row) if row else None
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def log_action(officer_id: int | None, action: str, target: str | None = None,
@@ -406,4 +455,4 @@ def log_action(officer_id: int | None, action: str, target: str | None = None,
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)

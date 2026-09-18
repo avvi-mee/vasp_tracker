@@ -8,7 +8,7 @@ monitoring (the problem statement's "alerting for high-risk wallets") did.
 """
 import psycopg2.extras
 
-from app.data.case_store import get_connection
+from app.data.case_store import get_connection, _release_connection
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS watchlist (
@@ -42,7 +42,7 @@ def init_db(conn=None) -> None:
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def add_to_watchlist(address: str, chain: str, officer_id: int | None, conn=None) -> int:
@@ -66,7 +66,7 @@ def add_to_watchlist(address: str, chain: str, officer_id: int | None, conn=None
         return watch_id
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def list_watchlist(conn=None) -> list[dict]:
@@ -78,7 +78,7 @@ def list_watchlist(conn=None) -> list[dict]:
             return [dict(row) for row in cur.fetchall()]
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def get_watch(watch_id: int, conn=None) -> dict | None:
@@ -91,7 +91,7 @@ def get_watch(watch_id: int, conn=None) -> dict | None:
             return dict(row) if row else None
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def record_check(watch_id: int, entity_type: str, label: str | None, risk_level: str, conn=None) -> dict:
@@ -134,7 +134,7 @@ def record_check(watch_id: int, entity_type: str, label: str | None, risk_level:
         return get_watch(watch_id, conn=conn)
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def update_alert_status(watch_id: int, status: str, conn=None) -> None:
@@ -148,7 +148,7 @@ def update_alert_status(watch_id: int, status: str, conn=None) -> None:
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)
 
 
 def remove_from_watchlist(watch_id: int, conn=None) -> None:
@@ -160,4 +160,4 @@ def remove_from_watchlist(watch_id: int, conn=None) -> None:
         conn.commit()
     finally:
         if owns_conn:
-            conn.close()
+            _release_connection(conn)

@@ -12,10 +12,13 @@ import pytest
 import networkx as nx
 from app.graph.trace import TraceResult
 from app.graph.risk import RiskAssessment
+import psycopg2.extensions
+
 from app.data.case_store import (
     save_case, list_cases, update_case_status, save_sahyog_draft,
     update_sahyog_status, log_case_event,
     add_upi_hop, list_upi_hops, delete_upi_hop,
+    _release_connection,
 )
 
 
@@ -184,3 +187,59 @@ def test_delete_upi_hop_logs_a_case_event():
     delete_upi_hop(case_id=1, hop_id=99, officer_id=7, conn=conn)
     event_call = cursor.execute.call_args_list[1]
     assert event_call[0][1][2] == "upi_hop_removed"
+
+
+# --- Connection pooling: a fresh psycopg2.connect() to Supabase measured
+# 2-5 SECONDS live (TCP+TLS handshake, not the query) -- pooled and reused
+# instead. _release_connection is the one piece of real branching logic in
+# that change, so it gets its own check rather than trusting the pool
+# library alone. ---
+
+def test_release_skips_rollback_on_an_already_clean_connection():
+    """Measured live: an unconditional rollback() cost ~0.18s of its own --
+    ROLLBACK is a real round trip to Postgres, not a local no-op -- and
+    every read-only call (the majority) was paying it for nothing. Skipping
+    it when the connection is already idle is what actually fixed that."""
+    conn = MagicMock()
+    conn.get_transaction_status.return_value = psycopg2.extensions.TRANSACTION_STATUS_IDLE
+
+    with pytest.MonkeyPatch.context() as mp:
+        pool = MagicMock()
+        mp.setattr("app.data.case_store._get_pool", lambda: pool)
+        _release_connection(conn)
+
+    conn.rollback.assert_not_called()
+    pool.putconn.assert_called_once_with(conn)
+
+
+def test_release_rolls_back_a_connection_left_mid_transaction():
+    """The case this exists for: an exception raised before the caller's own
+    commit() leaves a transaction open. Released uncleaned, the NEXT request
+    to borrow this same connection would fail with "current transaction is
+    aborted" for a query that has nothing to do with the original error."""
+    conn = MagicMock()
+    conn.get_transaction_status.return_value = psycopg2.extensions.TRANSACTION_STATUS_INTRANS
+
+    with pytest.MonkeyPatch.context() as mp:
+        pool = MagicMock()
+        mp.setattr("app.data.case_store._get_pool", lambda: pool)
+        _release_connection(conn)
+
+    conn.rollback.assert_called_once()
+    pool.putconn.assert_called_once_with(conn)
+
+
+def test_release_returns_the_connection_to_the_pool_even_if_rollback_itself_fails():
+    """A connection so broken that even rollback() raises is still worth
+    handing back rather than leaking -- the pool (or the next borrower's own
+    query) is what discovers a truly dead connection, not this function."""
+    conn = MagicMock()
+    conn.get_transaction_status.return_value = psycopg2.extensions.TRANSACTION_STATUS_INTRANS
+    conn.rollback.side_effect = Exception("connection already closed")
+
+    with pytest.MonkeyPatch.context() as mp:
+        pool = MagicMock()
+        mp.setattr("app.data.case_store._get_pool", lambda: pool)
+        _release_connection(conn)  # must not raise
+
+    pool.putconn.assert_called_once_with(conn)
