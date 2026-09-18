@@ -10,21 +10,31 @@ import {
   traceWallet,
 } from "@/lib/api";
 import {
+  Answer,
   CandidateList,
   DepositCallout,
   FieldRow,
+  NextStep,
   PathFlow,
   RiskBadge,
-  SectionTitle,
-  StatTile,
+  TypologyPanel,
 } from "@/components/Verdict";
 import { InvestigationGraph, type GraphSelection } from "@/components/InvestigationGraph";
 import { ExposureWheel, SeedExposureWheel } from "@/components/ExposureWheel";
 import { TransactionsTable } from "@/components/TransactionsTable";
 import { DetailDrawer } from "@/components/DetailDrawer";
-import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
-import { NavBar } from "@/components/NavBar";
-import { entityPlainLabel } from "@/lib/entityColors";
+import { AuthGuard } from "@/components/AuthGuard";
+import { AppShell } from "@/components/AppShell";
+import {
+  Badge,
+  Button,
+  Card,
+  Input,
+  SectionTitle,
+  Skeleton,
+  Stat,
+  Tabs,
+} from "@/components/ui";
 import type { Officer } from "@/lib/auth";
 
 export default function Home() {
@@ -107,27 +117,28 @@ function HomeContent({ officer }: { officer: Officer }) {
     }
   }
 
+  const trace = result?.trace;
+
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-      <header className="mb-4">
-        <div className="text-xl font-bold text-navy">VASP Trace</div>
-        <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
-      </header>
-
-      <OfficerBar officer={officer} />
-      <NavBar />
-
-      <form onSubmit={runTrace} className="flex flex-col gap-3 sm:flex-row">
-        <input
+    <AppShell
+      officer={officer}
+      title="Investigate a wallet"
+      subtitle="Follow the money to the nearest exchange, and say what the wallet's own behaviour shows"
+    >
+      <form onSubmit={runTrace} className="flex flex-col gap-2 sm:flex-row">
+        <Input
           value={address}
-          onChange={(e) => setAddress(e.target.value)}
-          placeholder="Paste any wallet address — Ethereum, Polygon, Tron, Solana, or Bitcoin"
-          className="flex-1 rounded-md border border-wire bg-paper-raised px-3 py-2 font-mono text-sm outline-none focus:border-navy"
+          onChange={setAddress}
+          mono
+          className="flex-1"
+          ariaLabel="Wallet address"
+          placeholder="Paste any wallet address — Ethereum, Polygon, Tron, Solana, Bitcoin or BNB"
         />
         <select
           value={chain}
           onChange={(e) => setChain(e.target.value)}
-          className="rounded-md border border-wire bg-paper-raised px-3 py-2 text-sm"
+          aria-label="Chain"
+          className="rounded-md border border-wire bg-paper-raised px-3 py-2 text-sm outline-none focus:border-navy"
         >
           <option value="">Auto-detect chain</option>
           {Object.entries(chains)
@@ -138,180 +149,281 @@ function HomeContent({ officer }: { officer: Officer }) {
               </option>
             ))}
         </select>
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-md bg-navy px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
+        <Button type="submit" disabled={loading}>
           {loading ? "Tracing…" : "Trace wallet"}
-        </button>
+        </Button>
       </form>
 
       {error && (
-        <div className="mt-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
+        <div
+          className="mt-4 rounded-lg border px-3 py-2 text-sm"
+          style={{
+            color: "var(--color-risk-high-fg)",
+            background: "var(--color-risk-high-bg)",
+            borderColor: "var(--color-risk-high-line)",
+          }}
+        >
           {error}
         </div>
       )}
 
-      {result && (
-        <div className="mt-8">
-          <SectionTitle>Verdict</SectionTitle>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Reached" value={entityPlainLabel(result.trace.entity_type)} />
-            <StatTile
-              label="Confidence"
-              value={result.trace.confidence ? `${(result.trace.confidence * 100).toFixed(0)}%` : "—"}
-            />
-            <StatTile label="Hops traced" value={String(result.trace.hop_count)} />
-            <StatTile label="Case ID" value={result.case_id ? `#${result.case_id}` : "not saved"} />
-          </div>
+      {loading && <TraceSkeleton />}
 
-          <div className="mt-3">
+      {!loading && !result && !error && <Primer />}
+
+      {!loading && result && trace && (
+        <div className="mt-6">
+          <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
+            <Answer
+              label={trace.label}
+              entityType={trace.entity_type}
+              hopCount={trace.hop_count}
+              confidence={trace.confidence}
+              source={trace.source}
+              maxHops={trace.max_hops}
+              chain={result.chain}
+            />
             <RiskBadge risk={result.risk} />
           </div>
 
-          {result.trace.caveats.length > 0 && (
-            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              {result.trace.caveats.map((c, i) => (
-                <div key={i}>{c}</div>
-              ))}
-            </div>
-          )}
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Chain" value={result.chain} />
+            <Stat
+              label="Asset followed"
+              value={trace.asset?.[0] ?? "—"}
+              hint={trace.asset?.[1] ? "token contract on file" : "native asset"}
+            />
+            <Stat
+              label="Search depth"
+              value={`${trace.hop_count} / ${trace.max_hops}`}
+              hint={trace.hop_count < trace.max_hops ? "stopped early — entity found" : "hop limit reached"}
+            />
+            <Stat label="Case ID" value={result.case_id ? `#${result.case_id}` : "not saved"} />
+          </div>
 
-          <SectionTitle>Traced path</SectionTitle>
-          <PathFlow
-            path={result.trace.path}
-            entityType={result.trace.entity_type}
-            label={result.trace.label}
-          />
-
-          {(result.trace.exposure.direct.length > 0 || result.trace.exposure.indirect.length > 0) && (
-            <>
-              <SectionTitle>Exposure — direct vs. indirect (along the trace)</SectionTitle>
-              <ExposureWheel direct={result.trace.exposure.direct} indirect={result.trace.exposure.indirect} />
-            </>
-          )}
-
-          {(result.trace.seed_exposure.receiving.length > 0 || result.trace.seed_exposure.sending.length > 0) && (
-            <>
-              <SectionTitle>Exposure — receiving vs. sending (at this address)</SectionTitle>
-              <SeedExposureWheel
-                receiving={result.trace.seed_exposure.receiving}
-                sending={result.trace.seed_exposure.sending}
-              />
-            </>
-          )}
-
-          <SectionTitle>Investigation</SectionTitle>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-2 text-xs">
-              <TabButton active={tab === "graph"} onClick={() => setTab("graph")}>
-                Graph
-              </TabButton>
-              <TabButton active={tab === "transactions"} onClick={() => setTab("transactions")}>
-                Transactions
-              </TabButton>
-            </div>
-            {assets.length > 1 && (
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                <AssetChip active={activeAsset === null} onClick={() => setActiveAsset(null)}>
-                  All assets
-                </AssetChip>
-                {assets.map((a) => (
-                  <AssetChip key={a} active={activeAsset === a} onClick={() => setActiveAsset(a)}>
-                    {a}
-                  </AssetChip>
+          {trace.caveats.length > 0 && (
+            <div
+              className="mt-3 rounded-lg border px-3 py-2 text-xs leading-relaxed"
+              style={{
+                color: "var(--color-risk-medium-fg)",
+                background: "var(--color-risk-medium-bg)",
+                borderColor: "var(--color-risk-medium-line)",
+              }}
+            >
+              <b>Limits of this search</b>
+              <ul className="mt-1 list-disc space-y-0.5 pl-4">
+                {trace.caveats.map((c, i) => (
+                  <li key={i}>{c}</li>
                 ))}
-              </div>
-            )}
+              </ul>
+            </div>
+          )}
+
+          <SectionTitle hint="Computed from this wallet's own transactions — no label required">
+            Laundering typologies
+          </SectionTitle>
+          <TypologyPanel typologies={trace.typologies} />
+
+          <SectionTitle
+            hint={
+              trace.explorer_flagged.length > 0
+                ? `${trace.explorer_flagged.length} address(es) flagged by the block explorer`
+                : undefined
+            }
+          >
+            Traced path
+          </SectionTitle>
+          <Card padded>
+            <PathFlow
+              path={trace.path}
+              entityType={trace.entity_type}
+              label={trace.label}
+              flagged={trace.explorer_flagged}
+            />
+          </Card>
+
+          {trace.deposit && (
+            <>
+              <SectionTitle>Deposit address</SectionTitle>
+              <DepositCallout deposit={trace.deposit} />
+            </>
+          )}
+
+          <SectionTitle hint="Shares can overlap — a path touching two categories counts toward both">
+            Exposure
+          </SectionTitle>
+          <div className="grid gap-3 xl:grid-cols-2">
+            <Card title="Along the trace" subtitle="Direct = immediate counterparty · Indirect = reached through intermediaries">
+              <ExposureWheel direct={trace.exposure.direct} indirect={trace.exposure.indirect} />
+            </Card>
+            <Card title="At this address" subtitle="Who paid in, and where it went out">
+              <SeedExposureWheel
+                receiving={trace.seed_exposure.receiving}
+                sending={trace.seed_exposure.sending}
+              />
+            </Card>
+          </div>
+
+          <SectionTitle
+            hint={
+              assets.length > 1 ? (
+                <span className="flex flex-wrap gap-1.5">
+                  <AssetChip active={activeAsset === null} onClick={() => setActiveAsset(null)}>
+                    All assets
+                  </AssetChip>
+                  {assets.map((a) => (
+                    <AssetChip key={a} active={activeAsset === a} onClick={() => setActiveAsset(a)}>
+                      {a}
+                    </AssetChip>
+                  ))}
+                </span>
+              ) : undefined
+            }
+          >
+            Transaction graph
+          </SectionTitle>
+          <div className="mb-3">
+            <Tabs
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "graph", label: "Graph" },
+                { value: "transactions", label: `Transactions (${trace.edges.length})` },
+              ]}
+            />
           </div>
 
           {tab === "graph" ? (
             <InvestigationGraph
-              seedAddress={result.trace.seed_address}
-              candidates={result.trace.candidates}
-              edges={result.trace.edges}
+              seedAddress={trace.seed_address}
+              candidates={trace.candidates}
+              edges={trace.edges}
               activeAsset={activeAsset}
+              flagged={trace.explorer_flagged}
               onSelect={setSelection}
             />
           ) : (
             <TransactionsTable
-              edges={result.trace.edges}
+              edges={trace.edges}
               onSelect={(edge) => setSelection({ kind: "edge", edge })}
             />
           )}
 
-          {result.trace.candidates.length > 1 && (
-            <>
-              <SectionTitle>
-                Ranked candidates — the value split {result.trace.candidates.length} ways
-              </SectionTitle>
-              <CandidateList candidates={result.trace.candidates} />
-            </>
-          )}
+          <SectionTitle hint={`${trace.candidates.length} terminal${trace.candidates.length === 1 ? "" : "s"} reached`}>
+            Where the value went
+          </SectionTitle>
+          <CandidateList candidates={trace.candidates} />
 
-          {result.trace.deposit && (
-            <>
-              <SectionTitle>Deposit address</SectionTitle>
-              <DepositCallout deposit={result.trace.deposit} />
-            </>
-          )}
+          <SectionTitle>Next step</SectionTitle>
+          <NextStep draft={result.sahyog_draft} />
 
-          <SectionTitle>Evidence</SectionTitle>
-          <div>
-            <FieldRow label="Seed address" value={result.trace.seed_address} mono />
+          <SectionTitle>Evidence record</SectionTitle>
+          <Card padded>
+            <FieldRow label="Subject address" value={trace.seed_address} mono />
             <FieldRow label="Chain" value={result.chain} />
-            <FieldRow label="Attributed entity" value={result.trace.label ?? "None — unattributed"} />
+            <FieldRow label="Attributed entity" value={trace.label ?? "None — unattributed"} />
+            <FieldRow label="Attribution source" value={trace.source ?? "—"} mono />
+            <FieldRow
+              label="Risk basis"
+              value={
+                <span className="flex flex-wrap justify-end gap-1">
+                  <Badge tone={result.risk.risk_level}>{result.risk.risk_level}</Badge>
+                  <Badge tone="neutral">{result.risk.basis}</Badge>
+                  {result.risk.typologies.map((t) => (
+                    <Badge key={t} tone="neutral">
+                      {t.replace(/_/g, " ")}
+                    </Badge>
+                  ))}
+                </span>
+              }
+            />
             <FieldRow
               label="Compliance status"
               value={`${result.risk.compliance_status} — ${result.risk.compliance_detail}`}
             />
-            {result.trace.source && <FieldRow label="Label source" value={result.trace.source} mono />}
-            {result.trace.reason && <FieldRow label="Trace outcome" value={result.trace.reason} />}
-          </div>
+            {trace.reason && <FieldRow label="Trace outcome" value={trace.reason} />}
+          </Card>
 
           <SectionTitle>Court evidence certificate — s.63 BSA, 2023</SectionTitle>
-          <p className="mb-2 text-xs text-ink-soft">
-            Generates Part A and Part B pre-filled with the trace findings and the SHA-256 of the
-            record, leaving every sworn statement blank for the officer and expert who must sign it.
-          </p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={caseReference}
-              onChange={(e) => setCaseReference(e.target.value)}
-              placeholder="Case / FIR reference (appears on the certificate)"
-              className="flex-1 rounded-md border border-wire bg-paper-raised px-3 py-2 text-sm outline-none focus:border-navy"
-            />
-            <button
-              onClick={handleCertificate}
-              disabled={certBusy}
-              className="rounded-md bg-gold px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
-              {certBusy ? "Generating…" : "Download evidence pack"}
-            </button>
-          </div>
+          <Card padded>
+            <p className="mb-3 text-xs leading-relaxed text-ink-soft">
+              Generates Part A and Part B pre-filled with the trace findings and the SHA-256 of the record,
+              leaving every sworn statement blank for the officer and expert who must sign it. Nothing here
+              is signed automatically.
+            </p>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={caseReference}
+                onChange={setCaseReference}
+                className="flex-1"
+                placeholder="Case / FIR reference (appears on the certificate)"
+              />
+              <Button tone="accent" onClick={handleCertificate} disabled={certBusy}>
+                {certBusy ? "Generating…" : "Download evidence pack"}
+              </Button>
+            </div>
+          </Card>
         </div>
       )}
 
       <DetailDrawer
         selection={selection}
-        candidates={result?.trace.candidates ?? []}
-        edges={result?.trace.edges ?? []}
+        candidates={trace?.candidates ?? []}
+        edges={trace?.edges ?? []}
         chain={result?.chain ?? ""}
         onClose={() => setSelection(null)}
       />
-    </main>
+    </AppShell>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+/** A trace is seconds of real network work against rate-limited public APIs.
+ * A disabled button and an unchanged page reads as a hang. */
+function TraceSkeleton() {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded px-3 py-1.5 font-semibold ${active ? "bg-navy text-white" : "bg-ledger-soft text-ink-soft"}`}
-    >
-      {children}
-    </button>
+    <div className="mt-6">
+      <div className="grid gap-3 lg:grid-cols-[3fr_2fr]">
+        <Skeleton className="h-28 rounded-xl" />
+        <Skeleton className="h-28 rounded-xl" />
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-16 rounded-lg" />
+        ))}
+      </div>
+      <p className="mt-4 text-xs text-ink-soft">
+        Following the money hop by hop against live block-explorer APIs. Branches that reach a named
+        exchange stop early; unattributed ones run to the hop limit, so a wallet with nothing to find takes
+        longest.
+      </p>
+      <Skeleton className="mt-3 h-48 rounded-xl" />
+    </div>
+  );
+}
+
+function Primer() {
+  return (
+    <div className="mt-8 grid gap-3 sm:grid-cols-3">
+      {[
+        {
+          h: "1 · Attribute",
+          p: "Follows the value outward, ranking every material split rather than the single biggest edge, until it reaches an address a dataset can name.",
+        },
+        {
+          h: "2 · Assess",
+          p: "Scores the wallet on its own behaviour — funnelling, layering, smurfing, peel chains — so a scam wallet is flagged even when nothing on its trail carries a label.",
+        },
+        {
+          h: "3 · Act",
+          p: "Names the deposit address, the recommended instrument (BNSS s.94 / s.107, PMLA s.5) and generates the s.63 BSA evidence pack for an officer to sign.",
+        },
+      ].map((c) => (
+        <Card key={c.h}>
+          <div className="text-sm font-semibold text-navy">{c.h}</div>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">{c.p}</p>
+        </Card>
+      ))}
+    </div>
   );
 }
 
@@ -319,8 +431,8 @@ function AssetChip({ active, onClick, children }: { active: boolean; onClick: ()
   return (
     <button
       onClick={onClick}
-      className={`rounded-full border px-2.5 py-1 ${
-        active ? "border-gold bg-gold/10 text-gold" : "border-wire text-ink-soft"
+      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
+        active ? "border-gold bg-gold/10 text-gold" : "border-wire text-ink-soft hover:border-wire-strong"
       }`}
     >
       {children}

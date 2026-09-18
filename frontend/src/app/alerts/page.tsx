@@ -12,8 +12,8 @@ import {
 } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
-import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
-import { NavBar } from "@/components/NavBar";
+import { AuthGuard } from "@/components/AuthGuard";
+import { AppShell } from "@/components/AppShell";
 
 const RISK_COLOR: Record<string, string> = {
   high: "var(--color-risk-high-fg)",
@@ -74,15 +74,7 @@ function AlertsContent({ officer }: { officer: Officer }) {
   const rest = entries.filter((e) => e.alert_status !== "open");
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-      <header className="mb-4">
-        <div className="text-xl font-bold text-navy">VASP Trace</div>
-        <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
-      </header>
-      <OfficerBar officer={officer} />
-      <NavBar />
-
-      <h1 className="mb-1 text-lg font-semibold text-ink">Alerts &amp; watchlist</h1>
+    <AppShell officer={officer} title="Alerts" subtitle="Watchlist addresses and what changed on them">
       <p className="mb-4 max-w-2xl text-xs text-ink-soft">
         Addresses under recurring watch. &quot;Check now&quot; re-runs a real trace — there&apos;s no
         scheduler yet, so nothing re-checks itself automatically. An alert opens only when risk
@@ -134,7 +126,7 @@ function AlertsContent({ officer }: { officer: Officer }) {
           {entries.length === 0 && <div className="text-xs text-ink-soft">Nothing on the watchlist yet.</div>}
         </div>
       </section>
-    </main>
+    </AppShell>
   );
 }
 

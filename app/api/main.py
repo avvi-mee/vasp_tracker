@@ -177,16 +177,27 @@ def _seed_txs(result, chain_cfg: dict) -> list[dict]:
         return []
 
 
+def _labels_for(result, currency: str) -> dict:
+    """Curated labels plus the ones this trace harvested from the explorer.
+    Curated wins on collision — an explorer tag is a third-party convenience
+    label, our Indian VASP dataset is checksum-validated. Without this merge
+    the exposure wheels reported "100% unattributed" about the very hop the
+    verdict had just named, which is precisely how the screenshots looked."""
+    discovered = {(currency.upper(), a): rec for a, rec in (result.discovered_labels or {}).items()}
+    return {**discovered, **_labels()}
+
+
 def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=()) -> dict:
     currency = chain_cfg["currency"]
+    labels = _labels_for(result, currency)
     payload = _jsonable(result)
     payload.pop("graph", None)  # str(DiGraph) is noise, not data
     payload["edges"] = _edges(result)
-    payload["exposure"] = _jsonable(compute_exposure(result, currency, _labels(), KNOWN_MIXERS))
+    payload["exposure"] = _jsonable(compute_exposure(result, currency, labels, KNOWN_MIXERS))
     payload["typologies"] = [_jsonable(t) for t in typologies]
     try:
         payload["seed_exposure"] = _jsonable(compute_seed_exposure(
-            result.seed_address, list(seed_txs), currency, _labels(), KNOWN_MIXERS, asset=result.asset))
+            result.seed_address, list(seed_txs), currency, labels, KNOWN_MIXERS, asset=result.asset))
     except Exception:
         logger.exception("Seed exposure failed for %s", result.seed_address)
         payload["seed_exposure"] = _jsonable(SeedExposure())

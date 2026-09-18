@@ -25,7 +25,7 @@ export function DetailDrawer({
   return (
     <div className="fixed inset-0 z-40 flex justify-end bg-black/20" onClick={onClose}>
       <div
-        className="h-full w-full max-w-sm overflow-y-auto bg-paper-raised p-5 shadow-xl"
+        className="h-full w-full overflow-y-auto bg-paper-raised p-4 shadow-xl sm:max-w-md sm:p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <button onClick={onClose} className="mb-4 text-xs text-ink-soft hover:text-ink">

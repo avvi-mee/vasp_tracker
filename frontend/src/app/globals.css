@@ -2,38 +2,66 @@
 /* Fonts are loaded via next/font/google in layout.tsx (self-hosted, no
    render-blocking external request) — see --font-sans/--font-mono below. */
 
-/* Ported 1:1 from app/ui_theme.py so the Next.js console and the Streamlit
+/* Ported from app/ui_theme.py so the Next.js console and the Streamlit
    fallback read as the same product, not two different tools. */
 :root {
   --color-navy: #1b2a4a;
+  --color-navy-soft: #2f4270;
   --color-gold: #8c661f;
   --color-ink: #14181f;
-  --color-ink-soft: #4b5568;
-  --color-wire: #d3d7e0;
+  --color-ink-soft: #5b6477;
+  --color-ink-faint: #8a93a6;
+  --color-wire: #dde1e9;
+  --color-wire-strong: #c3c9d6;
   --color-paper-raised: #ffffff;
-  --color-ledger-soft: #eaeef6;
+  --color-ledger-soft: #eef1f7;
 
+  /* Risk ramp. Five steps, not four: "unknown" is not a severity — an
+     unattributed trail is an open question, and colouring it the same grey
+     as "assessed, low" is how the tool ended up looking like it had scored
+     everything as fine. Each pair is a foreground on its own tinted ground,
+     checked to stay legible at 11px. */
+  --color-risk-critical-fg: #6d1b1b;
+  --color-risk-critical-bg: #fbe3e1;
+  --color-risk-critical-line: #c9756a;
   --color-risk-high-fg: #8c3420;
   --color-risk-high-bg: #fdeceb;
+  --color-risk-high-line: #e0a49a;
   --color-risk-medium-fg: #8c661f;
   --color-risk-medium-bg: #fbf3e4;
+  --color-risk-medium-line: #dfc189;
   --color-risk-low-fg: #4b5568;
   --color-risk-low-bg: #f1f3f7;
+  --color-risk-low-line: #cdd3df;
   --color-risk-none-fg: #256b47;
   --color-risk-none-bg: #eaf5ef;
+  --color-risk-none-line: #9ac9b0;
+  /* Deliberately a visible slate, not near-white: an unattributed slice used
+     to render as a blank ring on a white card, which read as "no data"
+     when it actually meant "100% of the money went somewhere we can't name" —
+     the single most important thing on the screen. */
+  --color-unattributed: #7c86a0;
+  --color-unattributed-bg: #eceef4;
 
-  --background: #f7f8fb;
+  --background: #f6f7fb;
   --foreground: var(--color-ink);
+
+  --shadow-card: 0 1px 2px rgb(20 24 31 / 0.04), 0 1px 3px rgb(20 24 31 / 0.06);
+  --shadow-pop: 0 4px 6px -1px rgb(20 24 31 / 0.08), 0 10px 20px -6px rgb(20 24 31 / 0.14);
 }
 
 @theme inline {
   --color-navy: var(--color-navy);
+  --color-navy-soft: var(--color-navy-soft);
   --color-gold: var(--color-gold);
   --color-ink: var(--color-ink);
   --color-ink-soft: var(--color-ink-soft);
+  --color-ink-faint: var(--color-ink-faint);
   --color-wire: var(--color-wire);
+  --color-wire-strong: var(--color-wire-strong);
   --color-paper-raised: var(--color-paper-raised);
   --color-ledger-soft: var(--color-ledger-soft);
+  --color-unattributed: var(--color-unattributed);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-ibm-plex-sans), ui-sans-serif, system-ui, sans-serif;
@@ -44,4 +72,25 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans);
+  /* Long hex addresses are the most common content here and they have no
+     spaces to break on. Without this a single address forces the whole page
+     to scroll sideways on a phone. */
+  overflow-wrap: anywhere;
+}
+
+/* A trace takes seconds, not milliseconds. The skeleton that stands in for
+   the result while it runs needs to look alive, or it reads as a frozen page
+   — which is what a 33-second trace behind a disabled button looked like. */
+@keyframes vt-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+.vt-skeleton {
+  animation: vt-pulse 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background: var(--color-ledger-soft);
+  border-radius: 0.375rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-skeleton { animation: none; }
 }

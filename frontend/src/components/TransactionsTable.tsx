@@ -89,8 +89,8 @@ export function TransactionsTable({ edges, onSelect }: { edges: Edge[]; onSelect
         )}
         <span className="text-ink-soft">{rows.length} transaction(s)</span>
       </div>
-      <div className="overflow-x-auto rounded-md border border-wire">
-        <table className="w-full text-left text-xs">
+      <div className="overflow-x-auto rounded-xl border border-wire bg-paper-raised">
+        <table className="w-full min-w-[640px] text-left text-xs">
           <thead className="bg-ledger-soft text-ink-soft">
             <tr>
               <th className="px-2 py-1.5 font-medium">Time</th>

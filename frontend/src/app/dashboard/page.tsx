@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { type Case, getCases, getCoverage } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
-import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
-import { NavBar } from "@/components/NavBar";
+import { AuthGuard } from "@/components/AuthGuard";
+import { AppShell } from "@/components/AppShell";
 
 export default function DashboardPage() {
   return <AuthGuard>{(officer) => <DashboardContent officer={officer} />}</AuthGuard>;
@@ -43,15 +43,8 @@ function DashboardContent({ officer }: { officer: Officer }) {
   }
 
   return (
-    <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-      <header className="mb-4">
-        <div className="text-xl font-bold text-navy">VASP Trace</div>
-        <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
-      </header>
-      <OfficerBar officer={officer} />
-      <NavBar />
-
-      <form onSubmit={goToAddress} className="mb-6 flex gap-2">
+    <AppShell officer={officer} title="Dashboard" subtitle="Your caseload, newest first">
+<form onSubmit={goToAddress} className="mb-6 flex gap-2">
         <input
           value={quickAddress}
           onChange={(e) => setQuickAddress(e.target.value)}
@@ -116,7 +109,7 @@ function DashboardContent({ officer }: { officer: Officer }) {
           </div>
         </section>
       </div>
-    </main>
+    </AppShell>
   );
 }
 

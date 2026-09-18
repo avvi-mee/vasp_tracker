@@ -99,6 +99,12 @@ class TraceResult:
     # How many hops the search was allowed, so the officer can tell
     # "no VASP within reach" from "we stopped looking".
     max_hops: int = 0
+    # Entity labels harvested from the explorer's own responses during this
+    # search, keyed by address (the currency is fixed for one trace). Exposed
+    # because everything downstream that asks "who is this address?" —
+    # exposure, the certificate — would otherwise report "unattributed" about
+    # addresses this very trace just named. See app/data/chain_native_labels.py.
+    discovered_labels: dict[str, dict] = field(default_factory=dict)
 
 
 def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
@@ -320,4 +326,5 @@ def trace_to_nearest_entity(
         entity_type=best.entity_type, label=best.label, confidence=best.confidence,
         source=best.source, reason=best.reason, asset=best.asset, deposit=best.deposit,
         candidates=terminals, caveats=caveats, explorer_flagged=flagged, max_hops=max_hops,
+        discovered_labels={address: rec for (_currency, address), rec in discovered.items()},
     )

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { clearSession, getOfficer, getToken, type Officer } from "@/lib/auth";
+import { getOfficer, getToken, type Officer } from "@/lib/auth";
 
 /** Every screen behind login goes through this — checked client-side since
  * there's no server session to check against (the JWT lives in
@@ -26,25 +26,4 @@ export function AuthGuard({ children }: { children: (officer: Officer) => React.
 
   if (!checked || !officer) return null;
   return <>{children(officer)}</>;
-}
-
-export function OfficerBar({ officer }: { officer: Officer }) {
-  const router = useRouter();
-  return (
-    <div className="mb-4 flex items-center justify-between text-xs text-ink-soft">
-      <span>
-        Signed in as <b className="text-ink">{officer.display_name}</b> ·{" "}
-        {officer.role === "officer" ? "Investigating Officer" : officer.role === "supervisor" ? "Reviewing Officer" : "Nodal Admin"}
-      </span>
-      <button
-        onClick={() => {
-          clearSession();
-          router.replace("/login");
-        }}
-        className="rounded px-2 py-1 hover:bg-ledger-soft"
-      >
-        Sign out
-      </button>
-    </div>
-  );
 }

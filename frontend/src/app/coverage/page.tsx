@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { type ChainInfo, getChains, getCoverage } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
-import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
-import { NavBar } from "@/components/NavBar";
+import { AuthGuard } from "@/components/AuthGuard";
+import { AppShell } from "@/components/AppShell";
 
 const CHAIN_SOURCES: Record<string, { source: string; note: string }> = {
   Ethereum: { source: "Etherscan API V2", note: "Native + ERC-20 + internal transactions." },
@@ -29,18 +29,10 @@ function CoverageContent({ officer }: { officer: Officer }) {
   }, []);
 
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-      <header className="mb-4">
-        <div className="text-xl font-bold text-navy">VASP Trace</div>
-        <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
-      </header>
-      <OfficerBar officer={officer} />
-      <NavBar />
-
-      <h1 className="mb-2 text-lg font-semibold text-ink">Coverage &amp; methodology</h1>
-      <p className="mb-6 max-w-2xl text-sm text-ink-soft">
+    <AppShell officer={officer} title="Coverage & methodology" subtitle="What this tool can see, how well, and where it stops">
+<p className="mb-6 max-w-2xl text-sm text-ink-soft">
         Every heuristic this tool uses states its own confidence and limits — on this page, not just
-        in a docstring. That's a deliberate choice: the most-cited criticism of commercial blockchain
+        in a docstring. That&apos;s a deliberate choice: the most-cited criticism of commercial blockchain
         analytics tooling in real court proceedings is the absence of a published methodology or
         error rate. Publishing ours costs little and answers the one objection that has actually
         mattered.
@@ -113,14 +105,14 @@ function CoverageContent({ officer }: { officer: Officer }) {
           The trace ranks every material split at each hop rather than following one path, but it
           still bounds how many branches it follows (a materiality floor plus a total-branch cap) to
           keep a single trace from making an unbounded number of real API calls. When that cap drops a
-          branch, it's recorded as an explicit caveat on the result, not silently absorbed — and worth
+          branch, it&apos;s recorded as an explicit caveat on the result, not silently absorbed — and worth
           knowing plainly: because the cap is value-based, a deliberately small split (structuring,
           done specifically to stay under a size threshold) is exactly the kind of path it could still
           miss. Exposure percentages (direct vs. indirect) are not a single pie and are not required
           to sum to 100% — a path exposed to more than one category counts toward each one.
         </p>
       </Section>
-    </main>
+    </AppShell>
   );
 }
 

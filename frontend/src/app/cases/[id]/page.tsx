@@ -11,8 +11,8 @@ import {
 } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
-import { AuthGuard, OfficerBar } from "@/components/AuthGuard";
-import { NavBar } from "@/components/NavBar";
+import { AuthGuard } from "@/components/AuthGuard";
+import { AppShell } from "@/components/AppShell";
 
 const SAHYOG_PIPELINE = ["draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled"] as const;
 
@@ -67,20 +67,8 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
   if (!caseData) return null;
 
   return (
-    <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
-      <header className="mb-4">
-        <div className="text-xl font-bold text-navy">VASP Trace</div>
-        <div className="font-mono text-xs text-ink-soft">SIH26182 · MHA / I4C</div>
-      </header>
-      <OfficerBar officer={officer} />
-      <NavBar />
-
-      <h1 className="mb-1 text-lg font-semibold text-ink">Case #{caseData.id}</h1>
-      <div className="mb-4 break-all font-mono text-xs text-ink-soft">
-        {caseData.seed_address} · {caseData.chain}
-      </div>
-
-      {error && (
+    <AppShell officer={officer} title={`Case #${caseData.id}`} subtitle={`${caseData.seed_address} · ${caseData.chain}`}>
+{error && (
         <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</div>
       )}
 
@@ -187,7 +175,7 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
           ))}
         </div>
       </section>
-    </main>
+    </AppShell>
   );
 }
 

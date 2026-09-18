@@ -12,6 +12,22 @@ export interface TraceRequest {
   chain?: string;
   case_reference?: string;
   analyst_note?: string;
+  /** Hops to follow. Server default is 12; it was pinned at 4, which is
+   * shorter than most real laundering chains. */
+  max_hops?: number;
+}
+
+/** A behavioural pattern found in the subject wallet's own transactions —
+ * see app/graph/typology.py. These are what let the tool say something is
+ * suspicious with no label at all. */
+export interface Typology {
+  name: string;
+  title: string;
+  severity: "low" | "medium" | "high";
+  confidence: number;
+  explanation: string;
+  stats: Record<string, number | string | number[]>;
+  evidence: string[];
 }
 
 export interface DepositEvidence {
@@ -85,6 +101,9 @@ export interface TraceResultJson {
   caveats: string[];
   exposure: ExposureBreakdown;
   seed_exposure: SeedExposure;
+  typologies: Typology[];
+  explorer_flagged: string[];
+  max_hops: number;
 }
 
 export interface RiskAssessment {
@@ -93,6 +112,10 @@ export interface RiskAssessment {
   risk_flag: boolean;
   risk_level: "none" | "low" | "medium" | "high";
   risk_reason: string | null;
+  /** Which question drove risk_level: what the money reached ("trail") or
+   * how the wallet itself behaves ("behaviour"). */
+  basis: "trail" | "behaviour";
+  typologies: string[];
 }
 
 export interface TraceResponse {
