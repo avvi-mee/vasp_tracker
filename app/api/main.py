@@ -404,15 +404,14 @@ def watchlist_check(watch_id: int, officer: Officer = Depends(get_current_office
     if not chain_cfg or not chain_cfg["enabled"]:
         raise HTTPException(400, f"{watch['chain']} isn't wired up in this build.")
 
-    try:
-        result = trace_to_nearest_entity(
-            seed_address=watch["address"], currency=chain_cfg["currency"],
-            fetch_transactions_fn=chain_cfg["fetch"],
-            labels_lookup=_labels(), mixers_lookup=KNOWN_MIXERS, max_hops=DEFAULT_MAX_HOPS,
-        )
-    except Exception as exc:
-        raise HTTPException(502, f"Re-check failed: {exc}")
-    risk = assess(result)
+    # Deliberately the same pipeline /v1/trace uses, not a second copy of it.
+    # This endpoint used to run its own trace and then call assess() with no
+    # typologies, so its risk level was trail-only: a watched wallet that
+    # started funnelling victim payments straight into a compliant exchange
+    # scored HIGH on the Investigate page and "none" here, and "Check now"
+    # raised no alert — precisely the case behavioural detection exists for.
+    _chain, _cfg, result, risk, _typologies, _seed_txs = _run_trace(
+        TraceRequest(address=watch["address"], chain=watch["chain"]))
 
     updated = record_check(watch_id, result.entity_type, result.label, risk.risk_level)
     _log_action_safely(officer.id, "watchlist_check", watch["address"],

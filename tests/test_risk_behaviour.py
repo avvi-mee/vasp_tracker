@@ -116,3 +116,27 @@ def test_the_same_pattern_one_hop_away_still_escalates():
 
     assert assessment.risk_level == "high"
     assert assessment.basis == "behaviour"
+
+
+def test_trace_recognises_an_entity_from_the_address_own_tag():
+    """An address's own tag arrives inside its OWN transactions — one fetch
+    later than the label check. Without a re-check the search walks past an
+    address it just proved is a named entity, and the seed can never be
+    recognised at all, because nothing fetches its parent's rows: it has none.
+    Found by review; the tool reported "unattributed — dead end" about a wallet
+    it had already labelled Binance-Hot 7 in the same call."""
+    from app.graph.trace import trace_to_nearest_entity
+
+    self_tagged = [{"tx_hash": "0x1", "from_addr": "TSeed", "to_addr": "TDep",
+                    "value_wei": 1_000_000, "timestamp": 100, "decimals": 6,
+                    "asset_symbol": "USDT", "asset_contract": "TR7N", "block_number": 1,
+                    "from_label": "Binance-Hot 7", "to_label": None}]
+
+    traced = trace_to_nearest_entity(
+        "TSeed", "TRX", lambda a: self_tagged if a == "TSeed" else [],
+        labels_lookup={}, mixers_lookup={}, max_hops=4)
+
+    assert traced.label == "Binance-Hot 7"
+    assert traced.entity_type == "exchange"
+    assert traced.hop_count == 0  # the subject IS the entity, not one hop from it
+    assert traced.reason is None  # not "dead end"

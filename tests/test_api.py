@@ -211,3 +211,46 @@ def test_watchlist_update_rejects_an_invalid_status(monkeypatch):
 
     r = client.patch("/v1/watchlist/1", json={"status": "not-a-real-status"}, headers=AUTH_HEADERS)
     assert r.status_code == 422
+
+
+def _funnelling_wallet(address):
+    """A wallet whose trail is clean (it pays a labelled exchange) but whose
+    own behaviour is not: 16 distinct payers in, one destination out."""
+    if address != "0xaaa":
+        return []
+    txs = [{"from_addr": f"0xvictim{i}", "to_addr": "0xaaa", "value_wei": 500,
+            "tx_hash": f"in{i}", "asset_type": "ETH", "asset_symbol": "ETH",
+            "asset_contract": "", "decimals": 0, "timestamp": 1000 + i * 60}
+           for i in range(16)]
+    txs += [{"from_addr": "0xaaa", "to_addr": "0xbbb", "value_wei": 500,
+             "tx_hash": f"out{i}", "asset_type": "ETH", "asset_symbol": "ETH",
+             "asset_contract": "", "decimals": 0, "timestamp": 1200 + i * 60}
+            for i in range(16)]
+    return txs
+
+
+def test_watchlist_check_sees_behavioural_risk_the_same_way_investigate_does(monkeypatch):
+    """Found by review. This endpoint ran its own trace and then called
+    assess() with no typologies, so its risk level was trail-only. A watched
+    wallet that started funnelling victim payments into a compliant exchange
+    read HIGH on the Investigate page and "none" here — and since an alert
+    only opens when the recorded level worsens, "Check now" raised nothing.
+    Both paths must reach the same verdict about the same address."""
+    client = _client(monkeypatch)
+    monkeypatch.setitem(api_main.CHAINS, "Ethereum",
+                        {"enabled": True, "currency": "ETH", "fetch": _funnelling_wallet})
+    monkeypatch.setattr(api_main, "get_watch", lambda watch_id: _fake_watch_row(chain="Ethereum"))
+    recorded = {}
+    monkeypatch.setattr(
+        api_main, "record_check",
+        lambda watch_id, entity_type, label, risk_level: recorded.update(
+            entity_type=entity_type, label=label, risk_level=risk_level) or _fake_watch_row(),
+    )
+
+    investigate = client.post("/v1/trace", json={"address": "0xaaa", "chain": "Ethereum"},
+                              headers=AUTH_HEADERS).json()
+    assert investigate["risk"]["risk_level"] == "high"
+    assert investigate["risk"]["basis"] == "behaviour"
+
+    assert client.post("/v1/watchlist/1/check", headers=AUTH_HEADERS).status_code == 200
+    assert recorded["risk_level"] == investigate["risk"]["risk_level"]

@@ -223,6 +223,23 @@ def trace_to_nearest_entity(
             # the next hop's label check can see it.
             discovered.update(harvest(txs, currency))
             explorer_flags.update(harvest_risk_flags(txs))
+
+            # An address's own tag reaches us inside its OWN transactions --
+            # Tronscan puts it on the from-side of everything it sends -- which
+            # is one fetch later than the label check above. Without this
+            # re-check the search walks straight past an address it has just
+            # proved is a named entity, and the seed can never be recognised at
+            # all (nothing fetches its parent's rows, because it has none).
+            self_rec = lookup_address(discovered, currency, current)
+            if self_rec:
+                entity_type = self_rec.get("category") or "exchange"
+                terminals.append(Candidate(
+                    branch.path, hop, entity_type, self_rec["label"],
+                    _confidence(hop, self_rec.get("is_cluster_definer", False)),
+                    self_rec.get("source"), None, branch.followed_asset, None,
+                    branch.value_share))
+                continue
+
             outgoing = [t for t in txs
                         if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]
             if not outgoing:
