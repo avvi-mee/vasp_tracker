@@ -31,9 +31,9 @@ logger = logging.getLogger("vasp_trace.api")
 from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
 from app.data.case_store import (
-    get_case, get_officer_by_username, init_db, list_case_events, list_cases, log_action,
-    save_case, save_sahyog_draft, update_case_legal_refs, update_case_status, update_case_tags,
-    update_sahyog_status,
+    add_upi_hop, delete_upi_hop, get_case, get_officer_by_username, init_db, list_case_events,
+    list_cases, list_upi_hops, log_action, save_case, save_sahyog_draft, update_case_legal_refs,
+    update_case_status, update_case_tags, update_sahyog_status,
 )
 from app.data.indian_vasps import coverage_summary, merge_labels
 from app.data.known_mixers import KNOWN_MIXERS
@@ -363,6 +363,7 @@ def _case_to_trace_and_risk(case: dict):
 def case_detail(case_id: int, officer: Officer = Depends(get_current_officer)):
     case = _require_case(case_id)
     case["events"] = list_case_events(case_id)
+    case["upi_hops"] = list_upi_hops(case_id)
     return case
 
 
@@ -416,6 +417,43 @@ def update_sahyog(case_id: int, req: SahyogStatusRequest, officer: Officer = Dep
     except ValueError as exc:
         raise HTTPException(422, str(exc))
     return get_case(case_id)
+
+
+class UpiHopRequest(BaseModel):
+    """One hand-entered leg of a UPI/bank money trail. Every field optional
+    on purpose — a bank disclosure rarely arrives complete, and a hop with
+    only an amount and a bank name is still worth recording. There is no API
+    that produces this data; it exists only because an officer already
+    obtained it through a bank disclosure or an NCRP complaint (see
+    app/data/case_store.py's upi_hops table)."""
+    payer_vpa: str | None = None
+    payer_bank: str | None = None
+    payee_vpa: str | None = None
+    payee_bank: str | None = None
+    amount: float | None = None
+    utr: str | None = None
+    transferred_at: str | None = None  # ISO date/datetime, officer-supplied
+    source: str | None = None
+    note: str | None = None
+
+
+@app.post("/v1/cases/{case_id}/upi-hops")
+def add_case_upi_hop(case_id: int, req: UpiHopRequest, officer: Officer = Depends(get_current_officer)):
+    """Appends one UPI/bank hop to this case's money trail, in the order
+    added. See UpiHopRequest and app/data/case_store.py:add_upi_hop.
+    Returns the same shape as GET /v1/cases/{id} (via case_detail, not a
+    bare get_case()) so the response actually carries the hop just added —
+    the whole point of calling this endpoint."""
+    _require_case(case_id)
+    add_upi_hop(case_id, req.model_dump(exclude_none=True), officer.id)
+    return case_detail(case_id, officer)
+
+
+@app.delete("/v1/cases/{case_id}/upi-hops/{hop_id}")
+def remove_case_upi_hop(case_id: int, hop_id: int, officer: Officer = Depends(get_current_officer)):
+    _require_case(case_id)
+    delete_upi_hop(case_id, hop_id, officer.id)
+    return case_detail(case_id, officer)
 
 
 @app.get("/v1/coverage")

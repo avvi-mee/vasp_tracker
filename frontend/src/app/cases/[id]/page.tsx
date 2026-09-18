@@ -13,6 +13,7 @@ import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
 import { AuthGuard } from "@/components/AuthGuard";
 import { AppShell } from "@/components/AppShell";
+import { UpiTrail } from "@/components/UpiTrail";
 
 const SAHYOG_PIPELINE = ["draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled"] as const;
 
@@ -161,6 +162,17 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
             </button>
           </div>
         )}
+      </section>
+
+      <section className="mb-6">
+        <SectionTitle>UPI / bank money trail</SectionTitle>
+        <UpiTrail
+          caseId={caseId}
+          seedAddress={caseData.seed_address}
+          chain={caseData.chain}
+          hops={caseData.upi_hops}
+          onChange={reload}
+        />
       </section>
 
       <section>

@@ -15,6 +15,7 @@ from app.graph.risk import RiskAssessment
 from app.data.case_store import (
     save_case, list_cases, update_case_status, save_sahyog_draft,
     update_sahyog_status, log_case_event,
+    add_upi_hop, list_upi_hops, delete_upi_hop,
 )
 
 
@@ -104,3 +105,82 @@ def test_log_case_event_inserts_a_row():
     args = cursor.execute.call_args[0]
     assert "INSERT INTO case_events" in args[0]
     assert args[1] == (1, 7, "status_changed", '{"status": "closed"}')
+
+
+# --- UPI/bank hops: the hand-entered money trail, see the module docstring
+# on upi_hops in case_store.py for why this can't be anything but hand-entered ---
+
+def test_add_upi_hop_assigns_the_next_order_after_existing_hops():
+    """A case with 2 hops already recorded gets order 3 for a new one --
+    hops are disclosed and entered in chain order, so this needs no
+    separate reordering step."""
+    conn, cursor = _fake_conn_returning()
+    cursor.fetchone.side_effect = [(2,), (55,)]  # COUNT(*) -> 2, RETURNING id -> 55
+
+    hop_id = add_upi_hop(1, {"payer_vpa": "victim@paytm", "amount": 5000.0}, officer_id=7, conn=conn)
+
+    assert hop_id == 55
+    insert_call = cursor.execute.call_args_list[1]
+    assert "INSERT INTO upi_hops" in insert_call[0][0]
+    params = insert_call[0][1]
+    assert params[0] == 1          # case_id
+    assert params[1] == 3          # hop_order = 2 existing + 1
+    assert params[2] == "victim@paytm"
+
+
+def test_add_upi_hop_on_an_empty_case_starts_at_order_one():
+    conn, cursor = _fake_conn_returning()
+    cursor.fetchone.side_effect = [(0,), (1,)]
+    add_upi_hop(1, {"payer_vpa": "victim@paytm"}, officer_id=7, conn=conn)
+    params = cursor.execute.call_args_list[1][0][1]
+    assert params[1] == 1
+
+
+def test_add_upi_hop_logs_a_case_event():
+    conn, cursor = _fake_conn_returning()
+    cursor.fetchone.side_effect = [(0,), (9,)]
+    add_upi_hop(1, {"payer_vpa": "victim@paytm"}, officer_id=7, conn=conn)
+    event_call = cursor.execute.call_args_list[2]  # third execute: log_case_event's insert
+    assert "INSERT INTO case_events" in event_call[0][0]
+    assert event_call[0][1][2] == "upi_hop_added"
+
+
+def test_add_upi_hop_accepts_a_partial_hop_without_crashing():
+    """A bank disclosure rarely arrives complete -- confirm a hop with only
+    a couple of fields known doesn't KeyError, and that the fields that ARE
+    known land in the right column position rather than shifting."""
+    conn, cursor = _fake_conn_returning()
+    cursor.fetchone.side_effect = [(0,), (1,)]
+    add_upi_hop(1, {"payer_vpa": "victim@paytm", "amount": 200.0}, officer_id=7, conn=conn)
+    params = cursor.execute.call_args_list[1][0][1]
+    # case_id, hop_order, payer_vpa, payer_bank, payee_vpa, payee_bank, amount, utr, transferred_at, source, note, officer_id
+    assert params == (1, 1, "victim@paytm", None, None, None, 200.0, None, None, None, None, 7)
+
+
+def test_list_upi_hops_orders_by_hop_order():
+    conn, cursor = _fake_conn_returning(fetchall_value=[
+        {"id": 1, "case_id": 1, "hop_order": 1, "payer_vpa": "victim@paytm"},
+        {"id": 2, "case_id": 1, "hop_order": 2, "payer_vpa": "mule1@ybl"},
+    ])
+    rows = list_upi_hops(1, conn=conn)
+    assert [r["hop_order"] for r in rows] == [1, 2]
+    query = cursor.execute.call_args[0][0]
+    assert "ORDER BY hop_order ASC" in query
+
+
+def test_delete_upi_hop_scopes_to_both_hop_id_and_case_id():
+    """Scoped to case_id too, not just the hop's own id -- an officer on
+    case A must not be able to delete a hop belonging to case B by guessing
+    or mistyping its id."""
+    conn, cursor = _fake_conn_returning()
+    delete_upi_hop(case_id=1, hop_id=99, officer_id=7, conn=conn)
+    delete_call = cursor.execute.call_args_list[0]
+    assert "DELETE FROM upi_hops WHERE id = %s AND case_id = %s" in delete_call[0][0]
+    assert delete_call[0][1] == (99, 1)
+
+
+def test_delete_upi_hop_logs_a_case_event():
+    conn, cursor = _fake_conn_returning()
+    delete_upi_hop(case_id=1, hop_id=99, officer_id=7, conn=conn)
+    event_call = cursor.execute.call_args_list[1]
+    assert event_call[0][1][2] == "upi_hop_removed"

@@ -226,8 +226,43 @@ export interface CaseEvent {
   created_at: string;
 }
 
+/** One hand-entered leg of a UPI/bank money trail. There is no API that
+ * produces this — UPI and bank ledgers are private, held by banks and
+ * NPCI, and only ever reach this tool because an officer already obtained
+ * a hop through a bank disclosure or an NCRP complaint. Every field is
+ * nullable: a disclosure rarely arrives complete. */
+export interface UpiHop {
+  id: number;
+  case_id: number;
+  hop_order: number;
+  payer_vpa: string | null;
+  payer_bank: string | null;
+  payee_vpa: string | null;
+  payee_bank: string | null;
+  amount: number | null;
+  utr: string | null;
+  transferred_at: string | null;
+  source: string | null;
+  note: string | null;
+  officer_id: number | null;
+  created_at: string;
+}
+
+export interface UpiHopInput {
+  payer_vpa?: string;
+  payer_bank?: string;
+  payee_vpa?: string;
+  payee_bank?: string;
+  amount?: number;
+  utr?: string;
+  transferred_at?: string;
+  source?: string;
+  note?: string;
+}
+
 export interface CaseDetail extends Case {
   events: CaseEvent[];
+  upi_hops: UpiHop[];
 }
 
 export const getCases = (limit = 200) => request<Case[]>(`/v1/cases?limit=${limit}`);
@@ -244,6 +279,12 @@ export const generateSahyogDraft = (id: number) =>
 
 export const updateSahyogStatus = (id: number, status: string) =>
   request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "PATCH", body: JSON.stringify({ status }) });
+
+export const addUpiHop = (caseId: number, hop: UpiHopInput) =>
+  request<CaseDetail>(`/v1/cases/${caseId}/upi-hops`, { method: "POST", body: JSON.stringify(hop) });
+
+export const removeUpiHop = (caseId: number, hopId: number) =>
+  request<CaseDetail>(`/v1/cases/${caseId}/upi-hops/${hopId}`, { method: "DELETE" });
 
 export interface WatchlistEntry {
   id: number;

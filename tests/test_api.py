@@ -118,10 +118,63 @@ def test_case_detail_includes_its_event_timeline(monkeypatch):
     client = _client(monkeypatch)
     monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
     monkeypatch.setattr(api_main, "list_case_events", lambda case_id: [{"action": "trace_saved"}])
+    monkeypatch.setattr(api_main, "list_upi_hops", lambda case_id: [])
 
     r = client.get("/v1/cases/1", headers=AUTH_HEADERS)
     assert r.status_code == 200
     assert r.json()["events"] == [{"action": "trace_saved"}]
+
+
+def test_case_detail_includes_its_upi_hops(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    monkeypatch.setattr(api_main, "list_case_events", lambda case_id: [])
+    monkeypatch.setattr(api_main, "list_upi_hops",
+                        lambda case_id: [{"id": 1, "hop_order": 1, "payer_vpa": "victim@paytm"}])
+
+    r = client.get("/v1/cases/1", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()["upi_hops"] == [{"id": 1, "hop_order": 1, "payer_vpa": "victim@paytm"}]
+
+
+def test_add_upi_hop_saves_it_and_returns_the_updated_case(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    monkeypatch.setattr(api_main, "list_case_events", lambda case_id: [])
+    saved = {}
+    monkeypatch.setattr(api_main, "add_upi_hop",
+                        lambda case_id, hop, officer_id: saved.update(case_id=case_id, hop=hop) or 1)
+    monkeypatch.setattr(api_main, "list_upi_hops", lambda case_id: [{"id": 1, **saved["hop"]}])
+
+    r = client.post("/v1/cases/1/upi-hops",
+                    json={"payer_vpa": "victim@paytm", "amount": 5000}, headers=AUTH_HEADERS)
+
+    assert r.status_code == 200
+    assert saved["case_id"] == 1
+    assert saved["hop"]["payer_vpa"] == "victim@paytm"
+    assert r.json()["upi_hops"][0]["payer_vpa"] == "victim@paytm"
+
+
+def test_add_upi_hop_on_an_unknown_case_is_a_404(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: None)
+    r = client.post("/v1/cases/999/upi-hops", json={"payer_vpa": "x"}, headers=AUTH_HEADERS)
+    assert r.status_code == 404
+
+
+def test_remove_upi_hop_deletes_and_returns_the_updated_case(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    monkeypatch.setattr(api_main, "list_case_events", lambda case_id: [])
+    monkeypatch.setattr(api_main, "list_upi_hops", lambda case_id: [])
+    deleted = {}
+    monkeypatch.setattr(api_main, "delete_upi_hop",
+                        lambda case_id, hop_id, officer_id: deleted.update(case_id=case_id, hop_id=hop_id))
+
+    r = client.delete("/v1/cases/1/upi-hops/9", headers=AUTH_HEADERS)
+
+    assert r.status_code == 200
+    assert deleted == {"case_id": 1, "hop_id": 9}
 
 
 def test_unknown_case_id_is_a_404(monkeypatch):

@@ -67,8 +67,33 @@ CREATE TABLE IF NOT EXISTS case_events (
     id SERIAL PRIMARY KEY,
     case_id INTEGER NOT NULL REFERENCES cases(id),
     officer_id INTEGER REFERENCES officers(id),
-    action TEXT NOT NULL,   -- 'trace_saved' | 'status_changed' | 'sahyog_draft_generated' | 'sahyog_status_changed' | 'certificate_downloaded'
+    action TEXT NOT NULL,   -- 'trace_saved' | 'status_changed' | 'sahyog_draft_generated' | 'sahyog_status_changed' | 'certificate_downloaded' | 'upi_hop_added' | 'upi_hop_removed'
     detail JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- UPI/bank leg of a money trail, entered by hand -- there is no API or
+-- public dataset that maps a UPI transaction to anything (unlike a
+-- blockchain, UPI/bank ledgers are private, held by banks and NPCI, and
+-- only ever surface here because an officer has already obtained them
+-- through a bank disclosure or an NCRP complaint). Every field is nullable
+-- on purpose: a disclosure rarely arrives complete, and a hop with only an
+-- amount and a bank name is still worth recording rather than blocked from
+-- entry until every field is known.
+CREATE TABLE IF NOT EXISTS upi_hops (
+    id SERIAL PRIMARY KEY,
+    case_id INTEGER NOT NULL REFERENCES cases(id),
+    hop_order INTEGER NOT NULL,   -- chain sequence, assigned at insert time
+    payer_vpa TEXT,
+    payer_bank TEXT,
+    payee_vpa TEXT,
+    payee_bank TEXT,
+    amount NUMERIC,
+    utr TEXT,                     -- UPI transaction reference number, bank-disclosed
+    transferred_at TIMESTAMPTZ,
+    source TEXT,                  -- where this hop came from, e.g. "Bank disclosure, 12/09/2026"
+    note TEXT,
+    officer_id INTEGER REFERENCES officers(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 """
@@ -264,6 +289,64 @@ def list_case_events(case_id: int, conn=None) -> list[dict]:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM case_events WHERE case_id = %s ORDER BY created_at ASC", (case_id,))
             return [dict(row) for row in cur.fetchall()]
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def add_upi_hop(case_id: int, hop: dict, officer_id: int | None, conn=None) -> int:
+    """Appends one hand-entered UPI/bank leg to a case's money trail.
+    `hop_order` is assigned here as "however many hops already exist, plus
+    one" -- hops are disclosed and entered in chain order in practice, so
+    this needs no separate reordering UI; correcting a mistake is delete
+    and re-add, the same pattern the rest of this store uses for edits."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM upi_hops WHERE case_id = %s", (case_id,))
+            next_order = cur.fetchone()[0] + 1
+            cur.execute(
+                """
+                INSERT INTO upi_hops
+                    (case_id, hop_order, payer_vpa, payer_bank, payee_vpa, payee_bank,
+                     amount, utr, transferred_at, source, note, officer_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (case_id, next_order, hop.get("payer_vpa"), hop.get("payer_bank"),
+                 hop.get("payee_vpa"), hop.get("payee_bank"), hop.get("amount"), hop.get("utr"),
+                 hop.get("transferred_at"), hop.get("source"), hop.get("note"), officer_id),
+            )
+            hop_id = cur.fetchone()[0]
+        conn.commit()
+        log_case_event(case_id, officer_id, "upi_hop_added", {"hop_id": hop_id, "hop_order": next_order}, conn=conn)
+        return hop_id
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def list_upi_hops(case_id: int, conn=None) -> list[dict]:
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute("SELECT * FROM upi_hops WHERE case_id = %s ORDER BY hop_order ASC", (case_id,))
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        if owns_conn:
+            conn.close()
+
+
+def delete_upi_hop(case_id: int, hop_id: int, officer_id: int | None, conn=None) -> None:
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM upi_hops WHERE id = %s AND case_id = %s", (hop_id, case_id))
+        conn.commit()
+        log_case_event(case_id, officer_id, "upi_hop_removed", {"hop_id": hop_id}, conn=conn)
     finally:
         if owns_conn:
             conn.close()
