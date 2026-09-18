@@ -49,6 +49,8 @@ from app.data.watchlist_store import (
     remove_from_watchlist,
     update_alert_status,
 )
+from app.addresses import normalize_address
+from app.assets import amount as _amount, asset_key as _asset_key, dominant_asset
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import SeedExposure, compute_exposure, compute_seed_exposure
@@ -165,6 +167,65 @@ def _edges(result) -> list[dict]:
     ]
 
 
+# How many counterparties to draw per direction in the wallet-activity view
+# below. The trace graph only ever shows the forward-traced path (often one
+# edge), which is honest about what the SEARCH followed but not about what
+# the WALLET actually did -- a wallet funded by 30 people looked like it
+# appeared from nowhere. Capped, same materiality idea trace.py already uses
+# for branching, so the graph stays readable; truncation is reported, not hidden.
+WALLET_ACTIVITY_CAP = 15
+
+
+def _ranked_counterparties(rows: list[dict], counterparty_field: str) -> tuple[list[tuple[str, float, dict]], int]:
+    """Collapse a wallet's transactions to one entry per counterparty --
+    summed value plus its largest single transaction as the representative
+    (for the tx hash / timestamp shown) -- ranked biggest first."""
+    totals: dict[str, float] = {}
+    representative: dict[str, dict] = {}
+    for t in rows:
+        counterparty = normalize_address(t[counterparty_field])
+        value = _amount(t)
+        totals[counterparty] = totals.get(counterparty, 0.0) + value
+        if counterparty not in representative or value > _amount(representative[counterparty]):
+            representative[counterparty] = t
+    ranked = sorted(totals.items(), key=lambda kv: kv[1], reverse=True)
+    return [(cp, val, representative[cp]) for cp, val in ranked[:WALLET_ACTIVITY_CAP]], len(ranked)
+
+
+def _wallet_activity(result, seed_txs: list[dict]) -> dict:
+    """Every direct counterparty of the SEED address itself, both directions
+    -- who funded this wallet, and where it sent funds -- separate from
+    `edges` (the ranked-candidate search's forward path). Answers "where did
+    the funds come from", which the trace graph alone never showed: that
+    graph only ever walks forward.
+    """
+    seed = normalize_address(result.seed_address)
+    asset = result.asset or dominant_asset(seed_txs)
+    txs = [t for t in seed_txs if asset is None or _asset_key(t) == asset]
+
+    incoming = [t for t in txs if normalize_address(t["to_addr"]) == seed and t["value_wei"] > 0]
+    outgoing = [t for t in txs if normalize_address(t["from_addr"]) == seed and t["value_wei"] > 0]
+
+    in_ranked, in_total = _ranked_counterparties(incoming, "from_addr")
+    out_ranked, out_total = _ranked_counterparties(outgoing, "to_addr")
+
+    def _edge(counterparty: str, total_value: float, tx: dict, direction: str) -> dict:
+        src, dst = (counterparty, seed) if direction == "in" else (seed, counterparty)
+        return {"from": src, "to": dst, "tx_hash": tx.get("tx_hash"),
+                "value_wei": tx.get("value_wei"), "amount": round(total_value, 8),
+                "asset": tx.get("asset_symbol"), "timestamp": tx.get("timestamp"),
+                "block_number": tx.get("block_number"), "direction": direction}
+
+    edges = ([_edge(cp, val, tx, "in") for cp, val, tx in in_ranked]
+             + [_edge(cp, val, tx, "out") for cp, val, tx in out_ranked])
+
+    return {
+        "edges": edges,
+        "incoming_shown": len(in_ranked), "incoming_total": in_total,
+        "outgoing_shown": len(out_ranked), "outgoing_total": out_total,
+    }
+
+
 def _seed_txs(result, chain_cfg: dict) -> list[dict]:
     """The seed's own transactions in both directions. Served from
     app/cache.py — the trace's first hop fetched exactly this a moment ago.
@@ -201,6 +262,12 @@ def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=()) -> dict:
     except Exception:
         logger.exception("Seed exposure failed for %s", result.seed_address)
         payload["seed_exposure"] = _jsonable(SeedExposure())
+    try:
+        payload["wallet_activity"] = _wallet_activity(result, list(seed_txs))
+    except Exception:
+        logger.exception("Wallet activity failed for %s", result.seed_address)
+        payload["wallet_activity"] = {"edges": [], "incoming_shown": 0, "incoming_total": 0,
+                                      "outgoing_shown": 0, "outgoing_total": 0}
     return payload
 
 

@@ -153,17 +153,42 @@ def test_hash_report_states_what_the_certificate_does_not_prove():
 
 
 def test_bundle_contains_all_four_documents_and_verifies_end_to_end():
+    """The certificate parts and hash report are PDFs now, not .txt — an
+    officer prints and signs these by hand, and a plain-text file is a worse
+    fit for that than the form it's meant to look like. The certified
+    record itself stays JSON: canonical_json()'s reproducibility, and the
+    hash on the certificate, describe that exact file — converting it to
+    PDF would mean the hash no longer describes what's enclosed."""
     pack, blob = build_certificate_bundle("ETH", _result(), assess(_result()),
                                           case_reference="FIR 123/2026")
     with zipfile.ZipFile(io.BytesIO(blob)) as z:
         names = z.namelist()
         assert pack.record_filename in names
-        assert {"CERTIFICATE-PART-A.txt", "CERTIFICATE-PART-B.txt",
-                "HASH-REPORT.txt"} <= set(names)
+        assert pack.record_filename.endswith(".json")
+        assert {"CERTIFICATE-PART-A.pdf", "CERTIFICATE-PART-B.pdf",
+                "HASH-REPORT.pdf"} <= set(names)
+        assert not any(n.endswith(".txt") for n in names)
         # the digest on the certificate matches the file actually shipped
         shipped = z.read(pack.record_filename)
         assert hashlib.sha256(shipped).hexdigest() == pack.record_sha256
-        assert "FIR 123/2026" in z.read("CERTIFICATE-PART-A.txt").decode("utf-8")
+        for pdf_name in ("CERTIFICATE-PART-A.pdf", "CERTIFICATE-PART-B.pdf", "HASH-REPORT.pdf"):
+            pdf_bytes = z.read(pdf_name)
+            assert pdf_bytes.startswith(b"%PDF-")  # a real PDF, not text wearing the extension
+            assert len(pdf_bytes) > 500  # not an empty/broken page
+
+
+def test_text_to_pdf_handles_the_full_certificate_including_wide_lines():
+    """The form's own separators run to 78 characters ('=' * 78) -- confirm
+    the longest real content this module produces renders without raising,
+    rather than only ever testing it against short strings."""
+    from app.evidence.certificate import _text_to_pdf
+
+    pack = _pack(case_reference="FIR 123/2026")
+    record = json.loads(pack.record_json)
+    for text in (render_part_a(pack, record), render_part_b(pack, record), render_hash_report(pack)):
+        pdf_bytes = _text_to_pdf(text)
+        assert pdf_bytes.startswith(b"%PDF-")
+        assert len(pdf_bytes) > 500
 
 
 def test_a_behaviour_based_risk_level_carries_its_behaviour_into_the_record():

@@ -42,9 +42,20 @@ import zipfile
 from dataclasses import dataclass, asdict, is_dataclass
 from datetime import datetime, timezone, timedelta
 
+from fpdf import FPDF
+from fpdf.enums import XPos, YPos
+
 TOOL_NAME = "VASP Trace"
 TOOL_VERSION = "1.0"
 IST = timezone(timedelta(hours=5, minutes=30), "IST")
+
+# Single source of truth for the three form filenames -- Part A's own text
+# names the hash report enclosure by filename, and this project already
+# shipped one drift bug (the text said .txt after the file itself became
+# .pdf) from that name being duplicated by hand in two places.
+PART_A_FILENAME = "CERTIFICATE-PART-A.pdf"
+PART_B_FILENAME = "CERTIFICATE-PART-B.pdf"
+HASH_REPORT_FILENAME = "HASH-REPORT.pdf"
 
 # The Schedule's algorithm tickboxes, in the order the form lists them.
 HASH_ALGORITHMS = ("SHA1", "SHA256", "MD5", "Other")
@@ -244,7 +255,7 @@ obtained through the following algorithm:—
 
    Other: {_blank(30)} (Legally acceptable standard)
 
-(Hash report to be enclosed with the certificate — see HASH-REPORT.txt)
+(Hash report to be enclosed with the certificate — see {HASH_REPORT_FILENAME})
 """
 
 
@@ -354,17 +365,70 @@ disclose.
 """
 
 
+# fpdf2's core Courier font (no embedded TTF, no new font-file asset to ship)
+# can't encode a handful of Unicode punctuation this module's own text uses —
+# confirmed live: rendering crashed with FPDFUnicodeEncodingException on
+# U+2014, the em dash used throughout the certificate prose. Transliterated
+# to their plain-ASCII equivalents, which change nothing legally: a hyphen
+# instead of an em dash affects typography, not the sworn statement's meaning.
+_PDF_CHAR_REPLACEMENTS = {
+    "—": "-", "–": "-",              # em dash, en dash
+    "‘": "'", "’": "'",              # curly single quotes
+    "“": '"', "”": '"',              # curly double quotes
+    "…": "...",                           # ellipsis
+}
+
+
+def _pdf_safe(text: str) -> str:
+    for src, dst in _PDF_CHAR_REPLACEMENTS.items():
+        text = text.replace(src, dst)
+    # Belt and braces: any character still outside Courier's reach becomes
+    # "?" rather than throwing and producing no certificate at all — the
+    # known substitutions above are the only ones this module has ever
+    # needed, but a future edit adding a new character must not silently
+    # break evidence generation for every trace.
+    return text.encode("latin-1", errors="replace").decode("latin-1")
+
+
+def _text_to_pdf(text: str) -> bytes:
+    """Renders plain text as a paginated PDF, Courier throughout so the
+    form's own fixed-width layout (tickboxes, blank-line rules, the '=' / '-'
+    separators) survives unchanged rather than being rebuilt in PDF markup.
+    The render_part_a/b/hash_report functions below are untouched — this
+    only changes the file format they're written into, not their content,
+    so nothing about what the certificate says (or the s.63 reasoning behind
+    it) changes along with this.
+    """
+    pdf = FPDF(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_margins(15, 15, 15)
+    pdf.add_page()
+    pdf.set_font("Courier", size=9)
+    for line in _pdf_safe(text).split("\n"):
+        # Confirmed live: multi_cell's own default leaves the cursor at the
+        # right edge of whatever it just rendered rather than the left
+        # margin, so the following line's available width shrank to almost
+        # nothing and fpdf2 raised "not enough horizontal space to render a
+        # single character" on its very first character. Explicit reset.
+        pdf.multi_cell(0, 4.2, line, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    return bytes(pdf.output())
+
+
 def build_certificate_bundle(chain: str, result, risk, case_reference: str = "",
                              analyst_note: str = "", typologies=()) -> tuple[EvidencePack, bytes]:
     """Returns the pack plus a zip: the certified record, both certificate
-    parts, and the hash report."""
+    parts, and the hash report. The record itself stays JSON, not PDF —
+    canonical_json()'s reproducibility, and the hash computed over it, is
+    the whole basis for the certificate; converting the certified file to a
+    different format would mean the hash no longer describes what's enclosed.
+    Everything meant to be printed, read and signed by hand is PDF."""
     pack = build_evidence_pack(chain, result, risk, case_reference, analyst_note, typologies)
     record = json.loads(pack.record_json)
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as bundle:
         bundle.writestr(pack.record_filename, pack.record_json)
-        bundle.writestr("CERTIFICATE-PART-A.txt", render_part_a(pack, record))
-        bundle.writestr("CERTIFICATE-PART-B.txt", render_part_b(pack, record))
-        bundle.writestr("HASH-REPORT.txt", render_hash_report(pack))
+        bundle.writestr(PART_A_FILENAME, _text_to_pdf(render_part_a(pack, record)))
+        bundle.writestr(PART_B_FILENAME, _text_to_pdf(render_part_b(pack, record)))
+        bundle.writestr(HASH_REPORT_FILENAME, _text_to_pdf(render_hash_report(pack)))
     return pack, buffer.getvalue()

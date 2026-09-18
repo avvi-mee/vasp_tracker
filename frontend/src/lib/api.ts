@@ -67,6 +67,26 @@ export interface Edge {
   asset: string | null;
   timestamp: number | null;
   block_number: number | null;
+  /** Only set on WalletActivity edges below -- "in" (paid the subject) or
+   * "out" (subject paid them). Edges on the traced path don't need it: the
+   * subject is always the source there, by construction of the search. */
+  direction?: "in" | "out";
+}
+
+/** Every direct counterparty of the subject address itself, both
+ * directions — who funded it, and where it sent funds — separate from
+ * `edges` above (the ranked-candidate search's forward path only). This is
+ * what answers "where did the money come from": the trace graph alone only
+ * ever walks forward from the seed, so a wallet funded by 30 people showed
+ * up with nothing pointing at it. Capped per direction so the graph stays
+ * legible; `*_total` says how much was left out when it was.
+ */
+export interface WalletActivity {
+  edges: Edge[];
+  incoming_shown: number;
+  incoming_total: number;
+  outgoing_shown: number;
+  outgoing_total: number;
 }
 
 export interface ExposureCategory {
@@ -104,6 +124,7 @@ export interface TraceResultJson {
   typologies: Typology[];
   explorer_flagged: string[];
   max_hops: number;
+  wallet_activity: WalletActivity;
 }
 
 export interface RiskAssessment {

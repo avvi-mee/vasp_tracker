@@ -38,6 +38,11 @@ export const GRAPH_PALETTE = {
   paper: "#ffffff",
   gold: "#8c661f",
   danger: "#8c3420",
+  // Edge colour for money moving INTO the subject address — the graph used
+  // to only ever draw the forward-traced path, so a wallet funded by 30
+  // people showed nothing pointing at it. Distinct from every entity/risk
+  // colour already in use so it reads as a direction, not a category.
+  received: "#2f7d5c",
 } as const;
 
 // Plain-language names for an LEA officer, not a blockchain analyst — the

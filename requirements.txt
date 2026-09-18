@@ -11,3 +11,4 @@ fastapi           # HTTP service layer — app/api/main.py
 uvicorn[standard] # ASGI server for the FastAPI app
 httpx             # required by fastapi.testclient.TestClient for API tests
 pyjwt             # officer login session tokens — app/auth.py
+fpdf2             # s.63 certificate PDF rendering — app/evidence/certificate.py
