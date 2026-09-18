@@ -86,6 +86,95 @@ function CoverageContent({ officer }: { officer: Officer }) {
         </div>
       </Section>
 
+      <Section title="Where a label comes from, and what it is worth">
+        <p className="mb-2 text-xs leading-relaxed text-ink-soft">
+          Attribution draws on three sources of different quality, and the verdict always names which
+          one it used. They are consulted in this order; a stronger source always wins on collision.
+        </p>
+        <div className="overflow-x-auto rounded-md border border-wire">
+          <table className="w-full min-w-[560px] text-left text-xs">
+            <thead className="bg-ledger-soft text-ink-soft">
+              <tr>
+                <th className="px-2 py-1.5 font-medium">Source</th>
+                <th className="px-2 py-1.5 font-medium">Confidence</th>
+                <th className="px-2 py-1.5 font-medium">What it means</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5">VASP Trace Indian VASP dataset</td>
+                <td className="px-2 py-1.5 font-mono">0.75 &ndash; 0.95</td>
+                <td className="px-2 py-1.5">
+                  Checksum-validated, per-address provenance recorded (operator-confirmed, confirmed,
+                  or single-source).
+                </td>
+              </tr>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5">GraphSense TagPacks</td>
+                <td className="px-2 py-1.5 font-mono">varies</td>
+                <td className="px-2 py-1.5">Community-curated, versioned and citable, but stale on live addresses.</td>
+              </tr>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5">Block explorer address tags</td>
+                <td className="px-2 py-1.5 font-mono">0.60</td>
+                <td className="px-2 py-1.5">
+                  A third-party convenience label, unversioned, withdrawable without notice. Harvested
+                  from the explorer&apos;s own transaction responses because the curated sets simply do
+                  not cover most live addresses. Treat a match sourced here as a lead to verify with the
+                  exchange, not a finished attribution.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+          Explorers also publish a per-address risk flag with no stated reasoning. It is used only as
+          corroboration — it can raise an unattributed trail from low to medium and is recorded as such,
+          and it never produces a verdict on its own.
+        </p>
+      </Section>
+
+      <Section title="Laundering typologies — thresholds, stated so they can be argued with">
+        <p className="mb-2 text-xs leading-relaxed text-ink-soft">
+          Behavioural detection answers a different question from attribution: not &ldquo;where did the
+          money go&rdquo; but &ldquo;how does this wallet behave&rdquo;. It needs no label, which is why a
+          scam wallet can be flagged before anyone has named a single address on its trail. Every
+          pattern below has innocent explanations — a payroll wallet fans out, an OTC desk funnels in, a
+          merchant sweeps — so a match raises a question and sets priority. It does not prove anything.
+        </p>
+        <div className="overflow-x-auto rounded-md border border-wire">
+          <table className="w-full min-w-[560px] text-left text-xs">
+            <thead className="bg-ledger-soft text-ink-soft">
+              <tr>
+                <th className="px-2 py-1.5 font-medium">Pattern</th>
+                <th className="px-2 py-1.5 font-medium">Fires when</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                ["Many-to-one funnel", "5+ distinct funders and 3 or fewer destinations. High severity at 15+ funders."],
+                ["Rapid layering", "Median hold under 60 min across 3+ sweeps, with 80%+ of received value forwarded on. High severity under 10 min across 10+ sweeps."],
+                ["Fan-out / smurfing", "8+ destinations whose amounts vary by under 35% of the mean, inside a 7-day window. High severity at 20+ destinations."],
+                ["Peel chain", "3+ consecutive hops each forwarding 70–99% of what arrived, never rising."],
+                ["Round-amount structuring", "The same round figure (multiple of 100, at least 100) sent 4+ times."],
+              ].map(([name, rule]) => (
+                <tr key={name} className="border-t border-wire">
+                  <td className="px-2 py-1.5 whitespace-nowrap">{name}</td>
+                  <td className="px-2 py-1.5">{rule}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+          These thresholds are judgement calls, not measured error rates, and this tool publishes no
+          false-positive rate because it has not been validated against a labelled corpus. Saying so is
+          the point: the criticism that has actually held up against commercial blockchain analytics in
+          court is the absence of a published methodology, and an unpublished threshold cannot be
+          cross-examined.
+        </p>
+      </Section>
+
       <Section title="Deposit-address detection (sweep.py)">
         <p className="text-xs text-ink-soft">
           Implements the deposit-address heuristic from Victor, Financial Cryptography 2020: an
