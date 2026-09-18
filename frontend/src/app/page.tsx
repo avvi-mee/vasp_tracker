@@ -19,6 +19,7 @@ import {
   RiskBadge,
   TypologyPanel,
 } from "@/components/Verdict";
+import { detectChain } from "@/lib/chainDetect";
 import { InvestigationGraph, type GraphSelection } from "@/components/InvestigationGraph";
 import { ExposureWheel, SeedExposureWheel } from "@/components/ExposureWheel";
 import { TransactionsTable } from "@/components/TransactionsTable";
@@ -54,6 +55,10 @@ function HomeContent({ officer }: { officer: Officer }) {
   const [tab, setTab] = useState<"graph" | "transactions">("graph");
   const [activeAsset, setActiveAsset] = useState<string | null>(null);
   const [selection, setSelection] = useState<GraphSelection | null>(null);
+
+  // Live, client-side, before the officer even submits -- the one thing
+  // they asked for: which chain this address will actually be traced on.
+  const detected = useMemo(() => detectChain(address), [address]);
 
   const assets = useMemo(
     () => Array.from(new Set((result?.trace.candidates ?? []).map((c) => c.asset?.[0]).filter(Boolean))) as string[],
@@ -126,19 +131,33 @@ function HomeContent({ officer }: { officer: Officer }) {
       subtitle="Follow the money to the nearest exchange, and say what the wallet's own behaviour shows"
     >
       <form onSubmit={runTrace} className="flex flex-col gap-2 sm:flex-row">
-        <Input
-          value={address}
-          onChange={setAddress}
-          mono
-          className="flex-1"
-          ariaLabel="Wallet address"
-          placeholder="Paste any wallet address — Ethereum, Polygon, Tron, Solana, Bitcoin or BNB"
-        />
+        <div className="flex-1">
+          <Input
+            value={address}
+            onChange={setAddress}
+            mono
+            className="w-full"
+            ariaLabel="Wallet address"
+            placeholder="Paste any wallet address — Ethereum, Polygon, Tron, Solana, Bitcoin or BNB"
+          />
+          {address.trim() && (
+            <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+              {detected.chain ? (
+                <>
+                  <span className="font-semibold text-navy">Detected: {detected.chain}</span>
+                  <span className="text-ink-faint">&mdash; {detected.note}</span>
+                </>
+              ) : (
+                <span className="text-ink-faint">{detected.note}</span>
+              )}
+            </div>
+          )}
+        </div>
         <select
           value={chain}
           onChange={(e) => setChain(e.target.value)}
           aria-label="Chain"
-          className="rounded-md border border-wire bg-paper-raised px-3 py-2 text-sm outline-none focus:border-navy"
+          className="h-fit rounded-md border border-wire bg-paper-raised px-3 py-2 text-sm outline-none focus:border-navy"
         >
           <option value="">Auto-detect chain</option>
           {Object.entries(chains)
@@ -149,7 +168,7 @@ function HomeContent({ officer }: { officer: Officer }) {
               </option>
             ))}
         </select>
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" disabled={loading} className="h-fit">
           {loading ? "Tracing…" : "Trace wallet"}
         </Button>
       </form>
