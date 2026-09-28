@@ -57,8 +57,10 @@ The record deliberately excludes clock readings so its SHA-256 is
 reproducible by a defence expert. Every sworn statement is left blank.
 
 **Case workflow.** Officer login with roles, case list and detail, NCRP
-acknowledgement and CCTNS FIR numbers, SAHYOG disclosure drafts routed to the
-right instrument (BNSS s.94 / s.107, PMLA s.5, BSA s.63), manual UPI/bank
+acknowledgement and CCTNS FIR numbers, SAHYOG disclosure and freeze drafts routed to the
+right instrument (BNSS s.94 disclosure; s.106 or s.107 freeze by the state's
+High Court position; LoR/MLAT for non-compliant offshore VASPs; BSA s.63),
+supervisor-only submission to a mock SAHYOG hub, manual UPI/bank
 money-trail entry, watchlist alerts, and a Coverage page that publishes this
 tool's own thresholds and limits.
 
@@ -107,6 +109,19 @@ cd frontend && npm install && npm run dev
 Everything in `.env` past the chain keys is optional — the Chainalysis oracle
 and the rupee price feed both work with no key and no account.
 
+**SAHYOG loop (mock).** Set `SAHYOG_SHARED_SECRET` in `.env`, then run the
+mock hub beside the API:
+
+```
+uvicorn mock_sahyog.app:app --port 8100
+curl -X POST localhost:8100/v1/complaints/push -H "Content-Type: application/json" ^
+     -d "{\"ncrp_ack_no\":\"31234567890123\",\"state\":\"Karnataka\",\"wallets\":[{\"address\":\"<wallet>\"}]}"
+```
+
+The push opens a traced case per wallet. A supervisor's "Submit via SAHYOG"
+on the case page gets ACKNOWLEDGED, then RESPONDED, callbacks in the
+timeline. Contract: `docs/sahyog-openapi.yaml`.
+
 ```
 python -m pytest tests/ -q     # no network; safe offline
 python -m app.cli <address>    # terminal harness, Ethereum
@@ -132,8 +147,10 @@ produces court evidence should not be coy about where it stops.
   not observation. It is written to return "not consulted" for any payload it
   does not recognise, so a wrong guess cannot produce a false hit or a false
   all-clear — but verify it against a real key before relying on it.
-- **SAHYOG submission is mocked.** Drafts are generated and stored; nothing
-  is transmitted, because no such API exists to call.
+- **SAHYOG is a mock hub.** No public SAHYOG API exists. `mock_sahyog/`
+  speaks a *proposed* contract and fabricates every response (stamped "MOCK
+  DATA"). HMAC signing stands in for mTLS + JWS. Pointing `SAHYOG_BASE_URL`
+  at a real hub is the only integration step, if one is ever provisioned.
 - **No FIU-IND registered-VASP list exists publicly.** Ground truth is
   assembled from named entities in penalty orders — a stated limitation, not
   a solved problem.

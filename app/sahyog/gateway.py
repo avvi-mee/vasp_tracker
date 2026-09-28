@@ -16,6 +16,7 @@ so this stays honest about that too.
 
 Never claims a live submission happened. Says so explicitly in every report.
 """
+import uuid
 from datetime import datetime, timezone
 
 from app.data.fiu_compliance import check_compliance
@@ -172,6 +173,71 @@ def build_disclosure_request(chain: str, trace_result, risk_assessment, analyst_
         "risk_reason": risk_assessment.risk_reason,
         "analyst_note": analyst_note or "(none provided)",
         "evidence_summary": _summarize(chain, trace_result, risk_assessment),
+    }
+
+
+# Instruments a SAHYOG hub request can carry. The rest are other channels
+# (MLAT, issuer, a certificate) and never go through the hub.
+SAHYOG_PROVISIONS = ("s94_bnss", "s106_bnss", "s107_bnss")
+DISCLOSURE_DATA = ["KYC", "LOGIN_IP_DEVICE", "DEPOSIT_WITHDRAWAL_HISTORY", "LINKED_BANK_UPI"]
+
+
+def intermediary_id(vasp: str) -> str:
+    """The hub's id for a directory VASP. Shared with mock_sahyog so both
+    sides derive the same id from app/data/fiu_compliance.py."""
+    return "VASP-" + vasp.upper().replace(" ", "-").replace(".", "")
+
+
+def to_sahyog_payload(case: dict, officer, provision_code: str | None = None,
+                      order_ref: str | None = None, order_date: str | None = None) -> dict:
+    """Maps a stored case + its saved draft to the hub's VaspRequest
+    (docs/sahyog-openapi.yaml). Raises ValueError when the draft cannot go
+    through SAHYOG at all, so the caller answers 422 instead of sending it."""
+    draft = case.get("sahyog_draft") or {}
+    if not draft:
+        raise ValueError("Generate a disclosure or freeze draft first.")
+    rec = draft.get("recommended_instrument") or {}
+    code = provision_code or rec.get("instrument")
+    if code == "freeze_officer_choice":
+        raise ValueError("No High Court position is recorded for this state — pick s106_bnss or s107_bnss.")
+    if code not in SAHYOG_PROVISIONS:
+        raise ValueError(f"{INSTRUMENTS.get(code, code)} is not served through SAHYOG.")
+    vasp = check_compliance(case.get("label") or "").get("vasp")
+    if not vasp:
+        raise ValueError("The trail does not reach a directory VASP — no intermediary to address.")
+
+    freeze = draft.get("request_type") == "vasp_freeze_request"
+    path = case.get("path") or [case["seed_address"]]
+    attribution = {"label": case.get("label"), "hops": case.get("hop_count"),
+                   "confidence": float(case["confidence"]) if case.get("confidence") is not None else None,
+                   "method": "trace + deposit sweep" if draft.get("deposit_address") else "trace"}
+    subjects = [{"chain": case["chain"], "address": case["seed_address"], "role": "seed",
+                 "tx_hashes": draft.get("tx_hashes") or []}]
+    if draft.get("deposit_address"):
+        subjects.append({"chain": case["chain"], "address": draft["deposit_address"],
+                         "role": "deposit_address", "attribution": attribution})
+    else:
+        subjects.append({"chain": case["chain"], "address": path[-1], "role": "hot_wallet",
+                         "attribution": attribution})
+
+    return {
+        # Same draft -> same id -> the hub's idempotency returns the same ref.
+        "request_id": str(uuid.uuid5(uuid.NAMESPACE_URL,
+                                     f"vasp-trace:case:{case['id']}:{draft.get('generated_at')}")),
+        "request_type": "FREEZE" if freeze else "DISCLOSURE",
+        "related_ref": None,
+        "case": {"case_id": str(case["id"]), "ncrp_ack_no": case.get("ncrp_ack_number"),
+                 "fir_no": case.get("cctns_fir_number"), "state": case.get("state") or draft.get("state")},
+        "requesting_agency": {"agency_id": "VASP-TRACE-DEMO", "officer_id": str(officer.id),
+                              "officer_name": officer.display_name, "designation": officer.role},
+        "legal_basis": {"provision_code": code, "order_ref": order_ref, "order_date": order_date},
+        "target": {"intermediary_id": intermediary_id(vasp)},
+        "subjects": subjects,
+        "data_requested": ["KYC"] if freeze else DISCLOSURE_DATA,
+        # as_of_block and the bundle hash arrive with the stored-trace
+        # certificate (plan Phase E); null until then, never invented.
+        "evidence": {"trace_run_id": f"case-{case['id']}", "as_of_block": None,
+                     "tool_version": "vasp-trace/1.0", "bundle_sha256": None},
     }
 
 

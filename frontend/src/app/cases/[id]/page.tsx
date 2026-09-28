@@ -7,10 +7,13 @@ import {
   type CaseDetail,
   type LinkedCase,
   type RecommendedInstrument,
+  type CaseEvent,
   type SahyogRequestType,
+  SAHYOG_STATUSES,
   generateSahyogDraft,
   getCase,
   getLinkedCases,
+  submitSahyog,
   updateCase,
   updateSahyogStatus,
 } from "@/lib/api";
@@ -20,7 +23,9 @@ import { AuthGuard } from "@/components/AuthGuard";
 import { AppShell } from "@/components/AppShell";
 import { UpiTrail } from "@/components/UpiTrail";
 
-const SAHYOG_PIPELINE = ["draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled"] as const;
+// Statuses while the hub still owes a callback — the page polls during these.
+const SAHYOG_WAITING = ["submitted", "acknowledged", "clarification_sought"];
+const CAN_SUBMIT = ["supervisor", "admin"];
 
 // States whose High Court has ruled on s.106 vs s.107 freezing (see
 // app/sahyog/gateway.py STATE_FREEZE_POSITION); any other state gets both drafts.
@@ -52,6 +57,7 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
         setCaseData(c);
         setNcrp(c.ncrp_ack_number ?? "");
         setCctns(c.cctns_fir_number ?? "");
+        setStateName((prev) => prev || c.state || "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load case"));
     getLinkedCases(caseId).then(setLinked).catch(() => setLinked([]));
@@ -60,6 +66,14 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
   useEffect(() => {
     if (Number.isFinite(caseId)) reload();
   }, [caseId, reload]);
+
+  // Hub callbacks land server-side; poll so they appear without a refresh.
+  const waiting = SAHYOG_WAITING.includes(caseData?.sahyog_status ?? "");
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(reload, 4000);
+    return () => clearInterval(t);
+  }, [waiting, reload]);
 
   async function withBusy(fn: () => Promise<unknown>) {
     setBusy(true);
@@ -136,8 +150,9 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
       <section className="mb-6">
         <SectionTitle>SAHYOG request — disclosure or freeze</SectionTitle>
         <p className="mb-2 text-xs text-ink-soft">
-          Manual status tracking — nothing syncs automatically, since no public SAHYOG API exists to
-          sync against. Update the status yourself as the request moves through the real portal.
+          No public SAHYOG API exists. &ldquo;Submit via SAHYOG&rdquo; sends to a <b>mock hub</b> that speaks a proposed
+          contract (docs/sahyog-openapi.yaml) and plays the VASP; for the real portal, submit by hand and set
+          the status yourself.
         </p>
         <div className="mb-3 flex flex-wrap items-end gap-3 text-xs">
           <Field label="Request">
@@ -188,7 +203,7 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
                 onChange={(e) => withBusy(() => updateSahyogStatus(caseId, e.target.value))}
                 className="rounded-md border border-wire bg-paper-raised px-2 py-1 capitalize"
               >
-                {SAHYOG_PIPELINE.map((s) => (
+                {SAHYOG_STATUSES.map((s) => (
                   <option key={s} value={s}>
                     {s.replaceAll("_", " ")}
                   </option>
@@ -196,6 +211,12 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
               </select>
             </div>
             <RecommendationDetail rec={caseData.sahyog_draft?.recommended_instrument as RecommendedInstrument | undefined} />
+            <SahyogSubmit
+              caseData={caseData}
+              canSubmit={CAN_SUBMIT.includes(officer.role)}
+              busy={busy}
+              onSubmit={(code) => withBusy(() => submitSahyog(caseId, code))}
+            />
           </div>
         )}
       </section>
@@ -222,7 +243,9 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
           {caseData.events.length === 0 && <div className="text-xs text-ink-soft">No events yet.</div>}
           {caseData.events.map((e) => (
             <div key={e.id} className="flex items-center justify-between text-xs">
-              <span className="font-medium">{e.action.replaceAll("_", " ")}</span>
+              <span className="font-medium">
+                {e.action === "sahyog_callback" ? `SAHYOG (mock): ${String(e.detail.type).toLowerCase()}` : e.action.replaceAll("_", " ")}
+              </span>
               <span className="text-ink-soft">{new Date(e.created_at).toLocaleString()}</span>
             </div>
           ))}
@@ -271,6 +294,51 @@ function LinkedCases({ linked }: { linked: LinkedCase[] }) {
           </span>
         </Link>
       ))}
+    </div>
+  );
+}
+
+function SahyogSubmit({ caseData, canSubmit, busy, onSubmit }: {
+  caseData: CaseDetail;
+  canSubmit: boolean;
+  busy: boolean;
+  onSubmit: (provisionCode?: string) => void;
+}) {
+  const instrument = (caseData.sahyog_draft?.recommended_instrument as RecommendedInstrument | undefined)?.instrument;
+  const needsChoice = instrument === "freeze_officer_choice";
+  const [code, setCode] = useState("");
+  const response = [...caseData.events]
+    .reverse()
+    .find((e: CaseEvent) => e.action === "sahyog_callback" && (e.detail.payload as Record<string, unknown>)?.notice);
+
+  return (
+    <div className="mt-3 border-t border-wire pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Mock</span>
+        {needsChoice && (
+          <select value={code} onChange={(e) => setCode(e.target.value)} disabled={busy}
+                  className="rounded-md border border-wire bg-paper-raised px-2 py-1">
+            <option value="">Pick freeze route…</option>
+            <option value="s106_bnss">BNSS s.106 (police freeze)</option>
+            <option value="s107_bnss">BNSS s.107 (Magistrate attachment)</option>
+          </select>
+        )}
+        <button
+          onClick={() => onSubmit(code || undefined)}
+          disabled={busy || !canSubmit || (needsChoice && !code)}
+          title={canSubmit ? undefined : "Only a supervisor or admin can serve a request"}
+          className="rounded-md bg-navy px-3 py-1.5 font-semibold text-white disabled:opacity-50"
+        >
+          {caseData.sahyog_ref ? "Resubmit via SAHYOG" : "Submit via SAHYOG"}
+        </button>
+        {caseData.sahyog_ref && <span className="font-mono text-ink-soft">ref {caseData.sahyog_ref}</span>}
+        {!canSubmit && <span className="text-ink-soft">Supervisor or admin only.</span>}
+      </div>
+      {response && (
+        <pre className="mt-2 overflow-x-auto rounded-md border border-amber-300 bg-amber-50 p-2 text-[11px] text-ink">
+          {JSON.stringify(response.detail.payload, null, 2)}
+        </pre>
+      )}
     </div>
   );
 }

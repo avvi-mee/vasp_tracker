@@ -67,6 +67,9 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS cctns_fir_number TEXT;
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_status TEXT;       -- NULL until a draft exists
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_instrument TEXT;   -- a key of app/sahyog/gateway.py INSTRUMENTS
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_draft JSONB;
+-- Set once the request is submitted to a SAHYOG hub (today: mock_sahyog).
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_ref TEXT;
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS state TEXT;  -- complainant's state; picks the freeze route
 
 CREATE TABLE IF NOT EXISTS case_events (
     id SERIAL PRIMARY KEY,
@@ -76,6 +79,10 @@ CREATE TABLE IF NOT EXISTS case_events (
     detail JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Backstop for record_sahyog_event's de-dupe check if two retries of the
+-- same hub callback race each other.
+CREATE UNIQUE INDEX IF NOT EXISTS case_events_sahyog_event
+    ON case_events ((detail->>'event_id')) WHERE action = 'sahyog_callback';
 
 -- UPI/bank leg of a money trail, entered by hand -- there is no API or
 -- public dataset that maps a UPI transaction to anything (unlike a
@@ -125,7 +132,9 @@ WHERE NOT EXISTS (SELECT 1 FROM case_addresses a WHERE a.case_id = c.id)
 ON CONFLICT DO NOTHING;
 """
 
-SAHYOG_STATUSES = ("draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled")
+SAHYOG_STATUSES = ("draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled",
+                   # Hub callback types (docs/sahyog-openapi.yaml), lowercased.
+                   "clarification_sought", "responded", "actioned", "rejected", "overdue", "withdrawn")
 CASE_STATUSES = ("open", "pending", "closed")
 
 
@@ -370,7 +379,10 @@ def save_sahyog_draft(case_id: int, instrument: str, draft: dict, officer_id: in
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE cases SET sahyog_status = 'draft', sahyog_instrument = %s, sahyog_draft = %s WHERE id = %s",
+                # sahyog_ref cleared: callbacks for the superseded submission
+                # must not overwrite the new draft's status.
+                "UPDATE cases SET sahyog_status = 'draft', sahyog_instrument = %s, sahyog_draft = %s, "
+                "sahyog_ref = NULL WHERE id = %s",
                 (instrument, json.dumps(draft), case_id),
             )
         conn.commit()
@@ -393,6 +405,72 @@ def update_sahyog_status(case_id: int, status: str, officer_id: int | None, conn
             cur.execute("UPDATE cases SET sahyog_status = %s WHERE id = %s", (status, case_id))
         conn.commit()
         log_case_event(case_id, officer_id, "sahyog_status_changed", {"status": status}, conn=conn)
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def set_case_intake(case_id: int, ncrp_ack_number: str | None, state: str | None, conn=None) -> None:
+    """Complaint metadata arriving with a SAHYOG/NCRP push (no officer yet)."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE cases SET ncrp_ack_number = %s, state = %s WHERE id = %s",
+                        (ncrp_ack_number, state, case_id))
+        conn.commit()
+        log_case_event(case_id, None, "sahyog_intake", {"ncrp_ack_number": ncrp_ack_number, "state": state},
+                       conn=conn)
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def mark_sahyog_submitted(case_id: int, sahyog_ref: str, payload: dict, officer_id: int | None,
+                          status: str = "submitted", conn=None) -> None:
+    """`status` is what the hub reports — a resubmitted (idempotent) request
+    keeps the status it already reached rather than going back to submitted."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("UPDATE cases SET sahyog_status = %s, sahyog_ref = %s WHERE id = %s",
+                        (status if status in SAHYOG_STATUSES else "submitted", sahyog_ref, case_id))
+        conn.commit()
+        log_case_event(case_id, officer_id, "sahyog_submitted",
+                       {"sahyog_ref": sahyog_ref, "request_id": payload["request_id"],
+                        "provision_code": payload["legal_basis"]["provision_code"],
+                        "intermediary_id": payload["target"]["intermediary_id"]}, conn=conn)
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def record_sahyog_event(event: dict, conn=None) -> int | None:
+    """Applies one hub callback: status update + timeline entry, in one
+    transaction. Returns the case id, or None when the event was already
+    applied (hubs retry; event_id is the de-dupe key) or the ref is unknown."""
+    status = event["type"].lower()
+    if status not in SAHYOG_STATUSES:
+        raise ValueError(f"Unknown SAHYOG event type {event['type']!r}")
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT id FROM cases WHERE sahyog_ref = %s", (event["sahyog_ref"],))
+            row = cur.fetchone()
+            if not row:
+                return None
+            case_id = row[0]
+            cur.execute("SELECT 1 FROM case_events WHERE case_id = %s AND action = 'sahyog_callback' "
+                        "AND detail->>'event_id' = %s", (case_id, event["event_id"]))
+            if cur.fetchone():
+                return None
+            cur.execute("UPDATE cases SET sahyog_status = %s WHERE id = %s", (status, case_id))
+            cur.execute("INSERT INTO case_events (case_id, officer_id, action, detail) VALUES (%s, NULL, "
+                        "'sahyog_callback', %s)", (case_id, json.dumps(event)))
+        conn.commit()
+        return case_id
     finally:
         if owns_conn:
             _release_connection(conn)

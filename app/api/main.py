@@ -8,6 +8,7 @@ contract for all three consumers.
 Run with: uvicorn app.api.main:app --reload
 """
 import asyncio
+import json
 import logging
 import os
 import time
@@ -27,7 +28,8 @@ from concurrent.futures import ThreadPoolExecutor
 
 import jwt as pyjwt
 import networkx as nx
-from fastapi import Depends, FastAPI, HTTPException
+import requests
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -39,8 +41,8 @@ from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
 from app.data.case_store import (
     add_upi_hop, delete_upi_hop, find_linked_cases, get_case, get_officer_by_username, init_db,
-    list_case_events, list_cases, list_link_clusters, list_upi_hops, log_action, save_case,
-    save_sahyog_draft, update_case_legal_refs,
+    list_case_events, list_cases, list_link_clusters, list_upi_hops, log_action, mark_sahyog_submitted,
+    record_sahyog_event, save_case, save_sahyog_draft, set_case_intake, update_case_legal_refs,
     update_case_status, update_case_tags, update_sahyog_status,
 )
 from app.data.indian_vasps import coverage_summary, merge_labels
@@ -68,7 +70,8 @@ from app.graph.risk import RiskAssessment, assess
 from app.graph.summary import summarise
 from app.graph.trace import DEFAULT_MAX_HOPS, TraceResult, trace_to_nearest_entity
 from app.graph.typology import detect as detect_typologies
-from app.sahyog.gateway import build_disclosure_request
+from app.sahyog.client import SIGNATURE_HEADER, SahyogClient, shared_secret, verify
+from app.sahyog.gateway import build_disclosure_request, to_sahyog_payload
 
 # Continuous watchlist monitoring.
 #
@@ -163,6 +166,16 @@ def get_current_officer(creds: HTTPAuthorizationCredentials = Depends(_bearer)) 
         raise HTTPException(401, "Invalid or expired session — log in again.")
     return Officer(id=int(payload["sub"]), username=payload["username"],
                    role=payload["role"], display_name=payload["display_name"])
+
+
+def require_role(*roles: str):
+    """Dependency: the officer must hold one of `roles`. Used for actions a
+    human supervisor must own, like serving a notice through SAHYOG."""
+    def dependency(officer: Officer = Depends(get_current_officer)) -> Officer:
+        if officer.role not in roles:
+            raise HTTPException(403, f"Needs the {' or '.join(roles)} role — you are {officer.role}.")
+        return officer
+    return dependency
 
 
 class LoginRequest(BaseModel):
@@ -546,6 +559,107 @@ def generate_sahyog_draft(case_id: int, req: SahyogDraftRequest | None = None,
                                      request_type=req.request_type, state=req.state)
     save_sahyog_draft(case_id, draft["recommended_instrument"]["instrument"], draft, officer.id)
     return get_case(case_id)
+
+
+class SahyogSubmitRequest(BaseModel):
+    # The officer confirms the legal basis (RESEARCH.md A.4: the officer
+    # picks it, the tool only recommends). Omit to use the draft's own.
+    provision_code: str | None = None
+    order_ref: str | None = None
+    order_date: str | None = None
+
+
+@app.post("/v1/cases/{case_id}/sahyog/submit")
+def submit_sahyog(case_id: int, req: SahyogSubmitRequest | None = None,
+                  officer: Officer = Depends(require_role("supervisor", "admin"))):
+    """Sends the saved draft to the SAHYOG hub at SAHYOG_BASE_URL — today
+    mock_sahyog, never the real portal. Supervisor-gated: nothing is served
+    on a VASP without a human who owns the decision."""
+    req = req or SahyogSubmitRequest()
+    case = _require_case(case_id)
+    try:
+        payload = to_sahyog_payload(case, officer, req.provision_code, req.order_ref, req.order_date)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc))
+    try:
+        ack = SahyogClient().submit(payload)
+    except requests.RequestException as exc:
+        detail = getattr(getattr(exc, "response", None), "text", "") or str(exc)
+        raise HTTPException(502, f"SAHYOG hub refused or unreachable: {detail}")
+    mark_sahyog_submitted(case_id, ack["sahyog_ref"], payload, officer.id,
+                          status=str(ack.get("status", "submitted")).lower())
+    _log_action_safely(officer.id, "sahyog_submit", str(case_id), {"sahyog_ref": ack["sahyog_ref"]})
+    return get_case(case_id)
+
+
+async def _signed_json(request: Request) -> dict:
+    """Hub -> VASP-Trace messages carry no officer token; the HMAC signature
+    over the raw body is the authentication (stand-in for mTLS + JWS)."""
+    body = await request.body()
+    if not shared_secret():
+        raise HTTPException(503, "SAHYOG_SHARED_SECRET is not set — hub messages cannot be verified.")
+    if not verify(body, request.headers.get(SIGNATURE_HEADER), shared_secret()):
+        raise HTTPException(401, "Bad or missing SAHYOG signature.")
+    try:
+        data = json.loads(body)
+    except ValueError:
+        raise HTTPException(422, "Body is not JSON.")
+    if not isinstance(data, dict):
+        raise HTTPException(422, "Body must be a JSON object.")
+    return data
+
+
+@app.post("/v1/sahyog/events")
+async def sahyog_event(request: Request):
+    """Signed status callback from the hub. Replays are rejected by age
+    (iat within 5 minutes) and de-duplicated by event_id."""
+    event = await _signed_json(request)
+    if abs(time.time() - float(event.get("iat", 0))) > 300:
+        raise HTTPException(401, "Stale SAHYOG event (iat outside ±5 min).")
+    try:
+        case_id = await asyncio.to_thread(record_sahyog_event, event)
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(422, f"Malformed SAHYOG event: {exc}")
+    except Exception as exc:
+        logger.exception("SAHYOG event could not be recorded")
+        raise HTTPException(503, f"Case database unreachable: {exc}")
+    return {"applied": case_id is not None, "case_id": case_id}
+
+
+def _intake_wallet(wallet: dict, ncrp_ack_no: str | None, state: str | None) -> dict:
+    """One reported wallet -> traced, saved case with the complaint's NCRP
+    number and a disclosure draft ready for a supervisor."""
+    try:
+        chain, chain_cfg, result, risk, _typ, _seed = _run_trace(
+            TraceRequest(address=wallet["address"], chain=wallet.get("chain")))
+    except HTTPException as exc:
+        return {"address": wallet.get("address"), "case_id": None, "error": exc.detail}
+    init_db()
+    case_id = save_case(chain_cfg["currency"], result, risk)
+    set_case_intake(case_id, ncrp_ack_no, state)
+    draft = build_disclosure_request(chain, result, risk)
+    save_sahyog_draft(case_id, draft["recommended_instrument"]["instrument"], draft, None)
+    return {"address": result.seed_address, "case_id": case_id, "chain": chain,
+            "reached": result.label or result.entity_type, "risk_level": risk.risk_level}
+
+
+@app.post("/v1/sahyog/cases")
+async def sahyog_intake(request: Request):
+    """Complaint intake: the hub pushes an NCRP complaint's reported wallets
+    (PS: "wallets reported on Sahyog"); each is traced and opened as a case."""
+    complaint = await _signed_json(request)
+    wallets = complaint.get("wallets") or []
+    if not wallets or not all(isinstance(w, dict) and w.get("address") for w in wallets):
+        raise HTTPException(422, "wallets must be a non-empty list of {address, chain?}.")
+    if len(wallets) > 20:  # each is a full live trace; keep one push bounded
+        raise HTTPException(422, f"At most 20 wallets per complaint push, got {len(wallets)}.")
+    try:
+        cases = [await asyncio.to_thread(_intake_wallet, w, complaint.get("ncrp_ack_no"), complaint.get("state"))
+                 for w in wallets]
+    except Exception as exc:
+        logger.exception("SAHYOG intake failed")
+        raise HTTPException(503, f"Case database unreachable: {exc}")
+    return {"ncrp_ack_no": complaint.get("ncrp_ack_no"), "cases": cases}
 
 
 class SahyogStatusRequest(BaseModel):

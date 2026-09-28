@@ -1,0 +1,74 @@
+# PROPOSED contract — NOT an official I4C / SAHYOG API. No public SAHYOG API
+# exists. Designed from docs/sih-review/RESEARCH.md A.4; implemented by
+# mock_sahyog/app.py (hub side) and app/api/main.py (VASP-Trace side).
+# Demo security: HMAC-SHA256 over the raw body in X-Sahyog-Signature, standing
+# in for mutual TLS + JWS-signed payloads that a real hub would require.
+openapi: 3.1.0
+info: {title: SAHYOG–VASP request exchange (PROPOSED, not an official I4C API), version: 0.1.0}
+paths:
+  /v1/intermediaries:
+    get:
+      parameters: [{name: category, in: query, schema: {type: string, enum: [VASP]}}]
+      responses: {'200': {description: Directory, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/Intermediary'}}}}}}
+  /v1/vasp-requests:
+    post:
+      parameters: [{name: Idempotency-Key, in: header, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaspRequest'}}}}
+      responses: {'202': {description: Accepted, content: {application/json: {schema: {type: object, properties: {sahyog_ref: {type: string}, status: {type: string}}}}}}}
+  /v1/vasp-requests/{sahyog_ref}:
+    get: {parameters: [{name: sahyog_ref, in: path, required: true, schema: {type: string}}], responses: {'200': {description: Status}}}
+  /v1/complaints/push:
+    post:
+      summary: MOCK ONLY — plays NCRP forwarding a complaint; the hub then calls VASP-Trace /v1/sahyog/cases
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Complaint'}}}}
+      responses: {'200': {description: VASP-Trace's intake response, relayed}}
+  # --- served by VASP-Trace, called by the hub (signed) ---
+  /v1/sahyog/events:
+    post:
+      summary: Status callback; de-duplicated by event_id, rejected if iat is outside ±5 min
+      parameters: [{name: X-Sahyog-Signature, in: header, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Event'}}}}
+      responses: {'200': {description: '{applied, case_id}'}, '401': {description: Bad signature or stale}}
+  /v1/sahyog/cases:
+    post:
+      summary: Complaint intake — each wallet is traced and opened as a case with a disclosure draft
+      parameters: [{name: X-Sahyog-Signature, in: header, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Complaint'}}}}
+      responses: {'200': {description: One entry per wallet with case_id or error}}
+components:
+  schemas:
+    Intermediary: {type: object, properties: {intermediary_id: {type: string}, legal_name: {type: string}, brands: {type: array, items: {type: string}}, request_types: {type: array, items: {type: string}}}}
+    VaspRequest:
+      type: object
+      required: [request_id, request_type, case, requesting_agency, legal_basis, target, subjects, evidence]
+      properties:
+        request_id: {type: string, format: uuid}
+        request_type: {type: string, enum: [DISCLOSURE, FREEZE, RELEASE, PRESERVE]}
+        related_ref: {type: string, nullable: true}
+        case: {type: object, properties: {case_id: {type: string}, ncrp_ack_no: {type: string}, fir_no: {type: string}, police_station: {type: string}, district: {type: string}, state: {type: string}}}
+        requesting_agency: {type: object, properties: {agency_id: {type: string}, officer_id: {type: string}, officer_name: {type: string}, designation: {type: string}}}
+        legal_basis: {type: object, properties: {provision_code: {type: string}, order_ref: {type: string}, order_date: {type: string, format: date}}}
+        target: {type: object, properties: {intermediary_id: {type: string}}}
+        subjects:
+          type: array
+          items: {type: object, properties: {chain: {type: string}, asset: {type: string}, address: {type: string}, role: {type: string, enum: [deposit_address, hot_wallet, seed]}, tx_hashes: {type: array, items: {type: string}}, amount: {type: string}, attribution: {type: object, properties: {label: {type: string}, method: {type: string}, hops: {type: integer}, confidence: {type: number}}}}}
+        data_requested: {type: array, items: {type: string, enum: [KYC, LOGIN_IP_DEVICE, DEPOSIT_WITHDRAWAL_HISTORY, LINKED_BANK_UPI]}}
+        evidence: {type: object, properties: {trace_run_id: {type: string}, as_of_block: {type: string}, tool_version: {type: string}, bundle_sha256: {type: string}}}
+    Event:
+      type: object
+      required: [event_id, sahyog_ref, type, iat]
+      properties:
+        event_id: {type: string}
+        sahyog_ref: {type: string}
+        request_id: {type: string}
+        type: {type: string, enum: [ACKNOWLEDGED, CLARIFICATION_SOUGHT, RESPONDED, ACTIONED, REJECTED, OVERDUE, WITHDRAWN]}
+        at: {type: string, format: date-time}
+        iat: {type: integer, description: Unix seconds; replay window ±300 s}
+        payload: {type: object, description: 'RESPONDED/ACTIONED body; the mock stamps "MOCK DATA — NOT A REAL DISCLOSURE"'}
+    Complaint:
+      type: object
+      required: [wallets]
+      properties:
+        ncrp_ack_no: {type: string}
+        state: {type: string}
+        wallets: {type: array, maxItems: 20, items: {type: object, required: [address], properties: {address: {type: string}, chain: {type: string}}}}

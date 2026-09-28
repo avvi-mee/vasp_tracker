@@ -210,6 +210,13 @@ export const getCoverage = () => request<Record<string, number>>("/v1/coverage")
 export const traceWallet = (body: TraceRequest) =>
   request<TraceResponse>("/v1/trace", { method: "POST", body: JSON.stringify(body) });
 
+/** app/data/case_store.py SAHYOG_STATUSES — manual ones, then hub callback types. */
+export const SAHYOG_STATUSES = [
+  "draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled",
+  "clarification_sought", "responded", "actioned", "rejected", "overdue", "withdrawn",
+] as const;
+export type SahyogStatus = (typeof SAHYOG_STATUSES)[number];
+
 export interface Case {
   id: number;
   seed_address: string;
@@ -229,9 +236,12 @@ export interface Case {
   officer_id: number | null;
   ncrp_ack_number: string | null;
   cctns_fir_number: string | null;
-  sahyog_status: "draft" | "ready_for_submission" | "submitted" | "acknowledged" | "fulfilled" | null;
+  sahyog_status: SahyogStatus | null;
   sahyog_instrument: string | null;
   sahyog_draft: Record<string, unknown> | null;
+  /** Set once submitted to the SAHYOG hub (today: the mock). */
+  sahyog_ref: string | null;
+  state: string | null;
   created_at: string;
 }
 
@@ -336,6 +346,13 @@ export const generateSahyogDraft = (id: number, requestType: SahyogRequestType =
   request<CaseDetail>(`/v1/cases/${id}/sahyog`, {
     method: "POST",
     body: JSON.stringify({ request_type: requestType, state: state || null }),
+  });
+
+/** Supervisor/admin only (403 otherwise). Goes to SAHYOG_BASE_URL — the mock hub. */
+export const submitSahyog = (id: number, provisionCode?: string) =>
+  request<CaseDetail>(`/v1/cases/${id}/sahyog/submit`, {
+    method: "POST",
+    body: JSON.stringify({ provision_code: provisionCode || null }),
   });
 
 export const updateSahyogStatus = (id: number, status: string) =>
