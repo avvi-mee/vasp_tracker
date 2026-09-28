@@ -7,7 +7,12 @@ contract for all three consumers.
 
 Run with: uvicorn app.api.main:app --reload
 """
+import asyncio
 import logging
+import os
+import time
+from contextlib import asynccontextmanager, suppress
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -52,17 +57,88 @@ from app.data.watchlist_store import (
     update_alert_status,
 )
 from app.addresses import normalize_address
+from app.api_clients.chainalysis import api_screen_addresses, screen_addresses
 from app.assets import amount as _amount, asset_key as _asset_key, dominant_asset
+from app.prices import rates as inr_rates
 from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import SeedExposure, compute_exposure, compute_seed_exposure
 from app.graph.risk import RiskAssessment, assess
+from app.graph.summary import summarise
 from app.graph.trace import DEFAULT_MAX_HOPS, TraceResult, trace_to_nearest_entity
 from app.graph.typology import detect as detect_typologies
 from app.sahyog.gateway import build_disclosure_request
 
+# Continuous watchlist monitoring.
+#
+# The watchlist was re-checked only when someone clicked "Check now", which
+# means an address could turn sanctioned on a Friday and nobody would learn
+# of it until a human happened to open the page. Transaction monitoring that
+# only runs when watched is not monitoring.
+#
+# Off by default, and deliberately so: every sweep re-runs a full trace per
+# watched address against rate-limited free-tier explorer APIs. Leaving it on
+# during a live demo would spend the same Etherscan budget the judges' trace
+# needs. Set WATCHLIST_INTERVAL_MINUTES to switch it on.
+WATCHLIST_INTERVAL_MINUTES = int(os.environ.get("WATCHLIST_INTERVAL_MINUTES", "0"))
+_monitor_state: dict = {"last_sweep_at": None, "last_sweep_checked": 0, "last_sweep_errors": 0}
+
+
+def _sweep_watchlist() -> dict:
+    """One pass over every watched address. Synchronous and slow on purpose —
+    it reuses _run_trace rather than a cheaper second implementation, so a
+    scheduled check and a clicked one can never reach different verdicts.
+    That divergence is exactly the bug the manual endpoint already had once.
+    """
+    checked = errors = 0
+    init_watchlist_db()
+    for row in list_watchlist():
+        chain_cfg = CHAINS.get(row["chain"])
+        if not chain_cfg or not chain_cfg["enabled"]:
+            continue
+        try:
+            _c, _cfg, result, risk, _typ, _seed = _run_trace(
+                TraceRequest(address=row["address"], chain=row["chain"]))
+            record_check(row["id"], result.entity_type, result.label, risk.risk_level)
+            checked += 1
+        except Exception:
+            # One unreachable chain must not abort the sweep for every other
+            # watched address.
+            errors += 1
+            logger.exception("Scheduled watchlist check failed for %s", row["address"])
+    _monitor_state.update(last_sweep_at=time.time(), last_sweep_checked=checked,
+                          last_sweep_errors=errors)
+    return dict(_monitor_state)
+
+
+async def _watchlist_monitor() -> None:
+    interval = WATCHLIST_INTERVAL_MINUTES * 60
+    logger.info("Watchlist monitor on — sweeping every %d minute(s).", WATCHLIST_INTERVAL_MINUTES)
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            # to_thread: the sweep does blocking DB and HTTP work, and running
+            # it on the event loop would stall every request for its duration.
+            state = await asyncio.to_thread(_sweep_watchlist)
+            logger.info("Watchlist sweep: %d checked, %d error(s).",
+                        state["last_sweep_checked"], state["last_sweep_errors"])
+        except Exception:
+            logger.exception("Watchlist sweep failed; the monitor stays up for the next one.")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    task = asyncio.create_task(_watchlist_monitor()) if WATCHLIST_INTERVAL_MINUTES > 0 else None
+    yield
+    if task:
+        task.cancel()
+        with suppress(asyncio.CancelledError):
+            await task
+
+
 app = FastAPI(title="VASP Trace API", version="1.0",
-              description="Automated blockchain intelligence & VASP attribution — SIH26182")
+              description="Automated blockchain intelligence & VASP attribution — SIH26182",
+              lifespan=lifespan)
 
 # ponytail: wide open for local dev / the hackathon demo; tighten to the
 # deployed Next.js origin (allow_credentials stays False either way — no
@@ -95,7 +171,11 @@ class LoginRequest(BaseModel):
 
 @app.post("/v1/auth/login")
 def login(req: LoginRequest):
-    officer = get_officer_by_username(req.username)
+    try:
+        officer = get_officer_by_username(req.username)
+    except Exception:
+        logger.exception("Officer lookup failed — is DATABASE_URL set?")
+        raise HTTPException(503, "Officer database is unavailable — check DATABASE_URL.")
     if not officer or not verify_password(req.password, officer["password_hash"]):
         raise HTTPException(401, "Incorrect username or password.")
     token = create_token(officer["id"], officer["username"], officer["role"], officer["display_name"])
@@ -154,6 +234,21 @@ def _run_trace(req: TraceRequest):
     # a second network call — and it is what the behavioural detectors and the
     # receiving/sending exposure wheel both read.
     seed_txs = _seed_txs(result, chain_cfg)
+
+    # Sanctions corroboration from Chainalysis, over every address the search
+    # actually followed. Two interfaces, because between them they cover all
+    # six chains: the on-chain oracle is free and keyless but EVM-only, while
+    # the Screening API needs a requested key and reaches Bitcoin, Tron and
+    # Solana too. Either may return None for "not consulted" — never treated
+    # as clean downstream.
+    #
+    # Done here rather than inside trace_to_nearest_entity so the trace engine
+    # stays a pure function of what its fetch callback returned, and so the
+    # trace tests never touch the network.
+    screened = {addr for c in result.candidates for addr in c.path} or set(result.path)
+    result.oracle_sanctioned = screen_addresses(screened, chain_cfg["currency"])
+    result.api_sanctioned = api_screen_addresses(screened)
+
     typologies = detect_typologies(result, seed_txs, asset=result.asset)
     risk = assess(result, typologies)
     return chain, chain_cfg, result, risk, typologies, seed_txs
@@ -235,8 +330,11 @@ def _seed_txs(result, chain_cfg: dict) -> list[dict]:
     swallowed and degrades to "no behavioural analysis", not to a 502."""
     try:
         return chain_cfg["fetch"](result.seed_address)
-    except Exception:
+    except Exception as exc:
         logger.exception("Seed transaction fetch failed for %s", result.seed_address)
+        result.caveats.append(
+            f"This wallet's own transaction history could not be fetched ({exc}), so the "
+            f"behavioural checks did not run — no typology match here means not checked.")
         return []
 
 
@@ -250,7 +348,7 @@ def _labels_for(result, currency: str) -> dict:
     return {**discovered, **_labels()}
 
 
-def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=()) -> dict:
+def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=(), risk=None, chain_name: str = "") -> dict:
     currency = chain_cfg["currency"]
     labels = _labels_for(result, currency)
     payload = _jsonable(result)
@@ -270,6 +368,15 @@ def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=()) -> dict:
         logger.exception("Wallet activity failed for %s", result.seed_address)
         payload["wallet_activity"] = {"edges": [], "incoming_shown": 0, "incoming_total": 0,
                                       "outgoing_shown": 0, "outgoing_total": 0}
+    # A rate table, not pre-converted figures: the UI already holds every
+    # amount it renders, so shipping {symbol: INR} once lets it price all of
+    # them without this layer having to find and convert each one. Empty when
+    # the price feed is unreachable, which the UI reads as "token units only".
+    payload["inr_rates"] = inr_rates()
+    # Restates the findings above in one paragraph. Pure function of what is
+    # already in this payload — no model, no second source — so it cannot
+    # disagree with the fields it is summarising. See app/graph/summary.py.
+    payload["summary"] = summarise(result, risk, typologies, chain=chain_name) if risk else ""
     return payload
 
 
@@ -303,7 +410,7 @@ def trace(req: TraceRequest, officer: Officer = Depends(get_current_officer)):
     return {
         "chain": chain,
         "case_id": case_id,
-        "trace": _trace_json(result, chain_cfg, typologies, seed_txs),
+        "trace": _trace_json(result, chain_cfg, typologies, seed_txs, risk=risk, chain_name=chain),
         "risk": _jsonable(risk),
         "sahyog_draft": build_disclosure_request(chain, result, risk, analyst_note=req.analyst_note),
     }
@@ -506,12 +613,38 @@ def watchlist_list(officer: Officer = Depends(get_current_officer)):
         raise HTTPException(503, f"Watchlist database unreachable: {exc}")
 
 
+@app.get("/v1/watchlist/monitor")
+def watchlist_monitor(officer: Officer = Depends(get_current_officer)):
+    """Whether continuous monitoring is actually running, so the Alerts page
+    can say which mode it is in rather than leaving the officer to assume.
+    An alerts list that looks live but is only refreshed by hand is worse
+    than one that admits it."""
+    return {
+        "enabled": WATCHLIST_INTERVAL_MINUTES > 0,
+        "interval_minutes": WATCHLIST_INTERVAL_MINUTES,
+        **_monitor_state,
+    }
+
+
+@app.post("/v1/watchlist/check-all")
+def watchlist_check_all(officer: Officer = Depends(get_current_officer)):
+    """Sweep every watched address once, now. The same pass the background
+    monitor runs — exposed so a deployment that would rather drive this from
+    cron or Task Scheduler than from an in-process loop can do so without a
+    second code path."""
+    state = _sweep_watchlist()
+    _log_action_safely(officer.id, "watchlist_check", "all",
+                       {"checked": state["last_sweep_checked"], "errors": state["last_sweep_errors"]})
+    return state
+
+
 @app.post("/v1/watchlist/{watch_id}/check")
 def watchlist_check(watch_id: int, officer: Officer = Depends(get_current_officer)):
     """Re-runs the trace for a watched address and records whether anything
-    alert-worthy changed. No scheduler yet — this is the manual "Check now"
-    button; automatic periodic re-checking is a stated future step, not
-    silently implied as already happening."""
+    alert-worthy changed. This is the manual "Check now" button; the same
+    pipeline runs unattended when WATCHLIST_INTERVAL_MINUTES is set (see the
+    monitor above), and via /v1/watchlist/check-all for an external
+    scheduler."""
     watch = get_watch(watch_id)
     if not watch:
         raise HTTPException(404, f"Watchlist entry {watch_id} not found.")

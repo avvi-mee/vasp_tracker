@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 
 from app.addresses import normalize_address as _normalize
 from app.assets import amount, asset_key
+from app.data.chain_native_labels import entity_category
 from app.data.known_illicit import check_illicit
 from app.data.tagpacks import lookup_address
 from app.graph.risk import DARKNET_MARKET_CATEGORIES, MIXER_CATEGORIES
@@ -66,7 +67,7 @@ def _classify(addr: str, currency: str, labels_lookup: dict, mixers_lookup: dict
 
     rec = lookup_address(labels_lookup, currency, addr)
     if rec:
-        category = (rec.get("category") or "exchange").lower()
+        category = entity_category(rec).lower()
         # Fold GraphSense's real vocabulary into the same buckets risk.py
         # uses, so the wheel and the verdict never disagree with each other.
         if category in MIXER_CATEGORIES:

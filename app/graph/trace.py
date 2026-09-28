@@ -96,6 +96,19 @@ class TraceResult:
     # actually on a followed path. Corroboration for risk.py, and something
     # the graph can highlight — never a verdict on its own.
     explorer_flagged: list[str] = field(default_factory=list)
+    # Addresses on a followed path that the Chainalysis on-chain sanctions
+    # oracle lists. None means the oracle was not consulted (non-EVM chain,
+    # or the RPC was unreachable) — deliberately distinct from [], which
+    # means it was consulted and found nothing. Populated by the caller after
+    # the search, the same way explorer_flagged is read by risk.py: keeping
+    # the network call out of here is what lets the trace tests stay offline.
+    oracle_sanctioned: list[str] | None = None
+    # Same, from Chainalysis's Sanctions Screening API rather than the
+    # oracle. Kept as its own field because the two have different reach —
+    # the oracle is EVM-only, this one covers every chain we trace but needs
+    # an API key — so merging them would lose which of the two actually
+    # answered. None here means no key configured, or the call failed.
+    api_sanctioned: list[str] | None = None
     # How many hops the search was allowed, so the officer can tell
     # "no VASP within reach" from "we stopped looking".
     max_hops: int = 0
@@ -113,11 +126,36 @@ class TraceResult:
     subject_entity: dict | None = None
 
 
-def _confidence(hop_count: int, is_cluster_definer: bool) -> float:
+# GraphSense stores label confidence as a provenance id, not a number. Ranked
+# by how the label was obtained: an authority's list beats a forensic study
+# beats an operator's self-description beats a web scrape.
+GRAPHSENSE_CONFIDENCE = {
+    "authority_data": 0.95,
+    "forensic": 0.90,
+    "service_data": 0.85,
+    "ledger_immanent": 0.85,
+    "web_crawl": 0.60,
+    "untrusted_transaction": 0.40,
+}
+NEUTRAL_LABEL_CONFIDENCE = 0.70  # label source didn't say how sure it is
+TOP_LABEL_CONFIDENCE = 0.95      # a label this good leaves the hop score unchanged
+
+
+def label_confidence(value) -> float:
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return float(value)
+    return GRAPHSENSE_CONFIDENCE.get(value, NEUTRAL_LABEL_CONFIDENCE)
+
+
+def _confidence(hop_count: int, is_cluster_definer: bool, label_conf=TOP_LABEL_CONFIDENCE) -> float:
+    """Distance score (fewer hops = surer) scaled by how trustworthy the
+    label itself is, so a 0.60 explorer tag never reads like a 0.95
+    operator-confirmed address at the same distance."""
     score = 0.9 - 0.15 * hop_count
     if is_cluster_definer:
         score += 0.05
-    return round(max(0.3, min(0.95, score)), 2)
+    score = max(0.3, min(0.95, score)) * label_confidence(label_conf) / TOP_LABEL_CONFIDENCE
+    return round(max(0.05, min(0.95, score)), 2)
 
 
 _normalize = normalize_address  # kept as a local alias; the rule lives in app/addresses.py
@@ -127,13 +165,16 @@ class _Branch:
     """One live path through the frontier. Plain class, not a dataclass —
     it's mutated nowhere and only ever constructed positionally, so a
     dataclass's generated boilerplate buys nothing here."""
-    __slots__ = ("path", "prev_txs", "followed_asset", "value_share")
+    __slots__ = ("path", "prev_txs", "followed_asset", "value_share", "arrived_at")
 
-    def __init__(self, path, prev_txs, followed_asset, value_share):
+    def __init__(self, path, prev_txs, followed_asset, value_share, arrived_at=None):
         self.path = path
         self.prev_txs = prev_txs
         self.followed_asset = followed_asset
         self.value_share = value_share
+        # Earliest time the followed funds reached path[-1]. An outflow before
+        # this cannot have carried them. None = unknown (seed, or no timestamp).
+        self.arrived_at = arrived_at
 
 
 def trace_to_nearest_entity(
@@ -146,7 +187,7 @@ def trace_to_nearest_entity(
 ) -> TraceResult:
     """fetch_transactions_fn(address) -> list of normalized tx dicts
     (see app/api_clients/etherscan.py for the shape)."""
-    from app.data.chain_native_labels import harvest, harvest_risk_flags
+    from app.data.chain_native_labels import entity_category, harvest, harvest_risk_flags
     from app.data.tagpacks import lookup_address  # local import avoids a hard circular dep
 
     seed_address = _normalize(seed_address)
@@ -183,7 +224,7 @@ def trace_to_nearest_entity(
             label_rec = (lookup_address(labels_lookup, currency, current)
                          or lookup_address(discovered, currency, current))
             if label_rec:
-                entity_type = label_rec.get("category") or "exchange"
+                entity_type = entity_category(label_rec)
                 # The hop immediately before an exchange is the candidate
                 # deposit address — the one that maps to a single KYC'd account.
                 deposit = None
@@ -192,7 +233,7 @@ def trace_to_nearest_entity(
                         branch.path[-2], branch.prev_txs, current, asset=branch.followed_asset)
                 terminals.append(Candidate(
                     branch.path, hop, entity_type, label_rec["label"],
-                    _confidence(hop, label_rec.get("is_cluster_definer", False)),
+                    _confidence(hop, label_rec.get("is_cluster_definer", False), label_rec.get("confidence")),
                     label_rec.get("source"), None, branch.followed_asset, deposit,
                     branch.value_share))
                 continue
@@ -232,20 +273,24 @@ def trace_to_nearest_entity(
             # all (nothing fetches its parent's rows, because it has none).
             self_rec = lookup_address(discovered, currency, current)
             if self_rec:
-                entity_type = self_rec.get("category") or "exchange"
+                entity_type = entity_category(self_rec)
                 terminals.append(Candidate(
                     branch.path, hop, entity_type, self_rec["label"],
-                    _confidence(hop, self_rec.get("is_cluster_definer", False)),
+                    _confidence(hop, self_rec.get("is_cluster_definer", False), self_rec.get("confidence")),
                     self_rec.get("source"), None, branch.followed_asset, None,
                     branch.value_share))
                 continue
 
-            outgoing = [t for t in txs
-                        if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]
+            all_outgoing = [t for t in txs
+                            if _normalize(t["from_addr"]) == current and t["value_wei"] > 0]
+            arrived = branch.arrived_at
+            outgoing = [t for t in all_outgoing
+                        if arrived is None or t.get("timestamp") is None or t["timestamp"] >= arrived]
             if not outgoing:
                 terminals.append(Candidate(
                     branch.path, hop, "unknown", None, 0.0, None,
-                    "dead end — no outgoing transactions found",
+                    "dead end — no outgoing transactions after the funds arrived"
+                    if all_outgoing else "dead end — no outgoing transactions found",
                     branch.followed_asset, None, branch.value_share))
                 continue
 
@@ -266,11 +311,15 @@ def trace_to_nearest_entity(
             # in several transactions within the same hop — before ranking.
             by_dest: dict[str, float] = {}
             edge_for_dest: dict[str, dict] = {}
+            first_seen: dict[str, float] = {}
             for t in same_asset:
                 dest = _normalize(t["to_addr"])
                 by_dest[dest] = by_dest.get(dest, 0.0) + amount(t)
                 if dest not in edge_for_dest or amount(t) > amount(edge_for_dest[dest]):
                     edge_for_dest[dest] = t
+                ts = t.get("timestamp")
+                if ts is not None and (dest not in first_seen or ts < first_seen[dest]):
+                    first_seen[dest] = ts
 
             total = sum(by_dest.values()) or 1.0
             ranked = sorted(by_dest.items(), key=lambda kv: kv[1], reverse=True)
@@ -286,7 +335,7 @@ def trace_to_nearest_entity(
                            timestamp=edge.get("timestamp"), block_number=edge.get("block_number"))
                 next_frontier.append(_Branch(
                     branch.path + [dest], txs, followed_asset,
-                    branch.value_share * (dest_amount / total)))
+                    branch.value_share * (dest_amount / total), first_seen.get(dest)))
 
         frontier = next_frontier
         if not frontier:

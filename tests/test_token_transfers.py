@@ -36,6 +36,28 @@ def _resp(rows):
     return r
 
 
+def _tx(symbol, contract, whole, decimals):
+    return {"tx_hash": "0x1", "from_addr": "0xa", "to_addr": "0xb", "value_wei": whole * 10**decimals,
+            "asset_symbol": symbol, "asset_contract": contract, "decimals": decimals}
+
+
+def test_worthless_token_flood_cannot_steer_the_trace():
+    """REVIEW.md defect 7: send a wallet a million units of a junk token and
+    decimal-unit ranking followed the junk instead of the real ETH."""
+    txs = [_tx("ETH", "", 2, 18), _tx("FREE", "0xjunk", 1_000_000, 18)]
+    assert dominant_asset(txs) == ("ETH", "")
+
+
+def test_fake_usdt_reusing_the_symbol_loses_to_the_real_contract():
+    txs = [_tx("USDT", USDT_ERC20.lower(), 5_000, 6), _tx("USDT", "0xfake", 9_000_000, 6)]
+    assert dominant_asset(txs) == ("USDT", USDT_ERC20.lower())
+
+
+def test_unlisted_token_still_followed_when_nothing_trusted_moved():
+    txs = [_tx("XYZ", "0xnew", 100, 18)]
+    assert dominant_asset(txs) == ("XYZ", "0xnew")
+
+
 @patch("app.api_clients.etherscan.requests.get")
 def test_erc20_transfer_keeps_its_own_decimal_scale(mock_get):
     """USDT is 6 decimals. Reading it as 18 makes 50,000 USDT look like dust."""

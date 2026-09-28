@@ -24,17 +24,20 @@ from app.addresses import normalize_address as _normalize
 TAGPACKS_DIR = Path(__file__).parent / "graphsense-tagpacks" / "packs"
 CACHE_FILE = Path(__file__).parent / "graphsense-tagpacks" / ".labels_cache.pkl"
 
-HEADER_FIELDS = ("label", "currency", "category", "source", "confidence", "is_cluster_definer", "actor")
+HEADER_FIELDS = ("label", "currency", "category", "source", "confidence", "is_cluster_definer", "actor", "abuse")
+# Bump when the shape of a cached record changes, so an old pickle built
+# without a new field is rebuilt instead of silently served.
+CACHE_VERSION = 2
 
 # The C-accelerated loader if libyaml is available (it is, in this project's
 # venv — checked live); pure-Python SafeLoader otherwise rather than fail.
 _YAML_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
-def _dataset_fingerprint(tagpacks_dir: Path) -> float:
+def _dataset_fingerprint(tagpacks_dir: Path) -> tuple:
     """Newest file mtime in the dataset — a cheap, good-enough proxy for
     "has this changed since the cache was written"."""
-    return max((f.stat().st_mtime for f in tagpacks_dir.rglob("*.yaml")), default=0.0)
+    return (CACHE_VERSION, max((f.stat().st_mtime for f in tagpacks_dir.rglob("*.yaml")), default=0.0))
 
 
 def load_labels(tagpacks_dir: Path = TAGPACKS_DIR, use_cache: bool = True) -> dict[tuple[str, str], dict]:
@@ -82,6 +85,9 @@ def load_labels(tagpacks_dir: Path = TAGPACKS_DIR, use_cache: bool = True) -> di
                     "source": merged.get("source"),
                     "confidence": merged.get("confidence"),
                     "is_cluster_definer": bool(merged.get("is_cluster_definer")),
+                    # ransomware / phishing / scam / service_hack ... — set on
+                    # most packs that have no `category` at all.
+                    "abuse": merged.get("abuse"),
                 }
 
     if use_cache:

@@ -85,6 +85,42 @@ def _jsonable(value):
     return str(value)
 
 
+def _screening_provenance(result) -> dict:
+    """What each sanctions source contributed to this trail.
+
+    `vendored_ofac_sdn` is always consulted — it is a file in the repo, so it
+    works offline and cannot be "unreachable", only stale. The Chainalysis
+    on-chain oracle is read live and is EVM-only, so it has a third state
+    beyond hit/clean: not_consulted.
+    """
+    oracle = getattr(result, "oracle_sanctioned", None)
+    api = getattr(result, "api_sanctioned", None)
+    return {
+        "vendored_ofac_sdn": {
+            "consulted": True,
+            "note": "Local snapshot of Treasury's SDN list; as current as this build's copy.",
+        },
+        "chainalysis_onchain_oracle": {
+            "consulted": oracle is not None,
+            "method": "isSanctioned(address) — US/EU/UN designations, read live from chain",
+            "addresses_listed": sorted(oracle) if oracle else [],
+            "note": ("Consulted." if oracle is not None else
+                     "Not consulted — no oracle deployment on this chain, the endpoint was "
+                     "unreachable, or part of the trail could not be screened. Absence of a "
+                     "hit here is NOT evidence of absence."),
+        },
+        "chainalysis_screening_api": {
+            "consulted": api is not None,
+            "method": "Chainalysis Sanctions Screening API — all chains, requires an API key",
+            "addresses_listed": sorted(api) if api else [],
+            "note": ("Consulted." if api is not None else
+                     "Not consulted — no API key configured in this deployment, or part of "
+                     "the trail could not be screened. Absence of a hit here is NOT evidence "
+                     "of absence."),
+        },
+    }
+
+
 def build_record(chain: str, result, risk, case_reference: str = "",
                  analyst_note: str = "", typologies=()) -> dict:
     """Freeze the trace findings into the structure that will be hashed.
@@ -129,6 +165,17 @@ def build_record(chain: str, result, risk, case_reference: str = "",
             "compliance_detail": risk.compliance_detail,
         },
         "analyst_note": analyst_note,
+        # Which sanctions sources were actually consulted for this trail, and
+        # what each said. In the record rather than only in risk_reason's prose
+        # because "the oracle was not reachable" and "the oracle said clean"
+        # are different claims, and a certificate that cannot tell them apart
+        # is asserting coverage it does not have.
+        #
+        # Safe for the reproducible-hash rule above: unlike a clock reading or
+        # a price, a sanctions verdict does not change merely because time
+        # passed. If it differs on a re-run, the finding genuinely differs and
+        # the digest ought to say so.
+        "sanctions_screening": _screening_provenance(result),
     }
     if getattr(result, "deposit", None):
         record["deposit_address_finding"] = _jsonable(result.deposit)

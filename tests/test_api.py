@@ -55,6 +55,30 @@ def test_trace_endpoint_returns_a_verdict(monkeypatch):
     assert body["sahyog_draft"]["seed_address"] == "0xaaa"
 
 
+def test_login_without_a_database_is_503_not_500(monkeypatch):
+    """REVIEW.md defect X5: an unset DATABASE_URL crashed login with a 500."""
+    client = _client(monkeypatch, authenticated=False)
+
+    def no_db(_username):
+        raise RuntimeError("DATABASE_URL is not set")
+    monkeypatch.setattr(api_main, "get_officer_by_username", no_db)
+    r = client.post("/v1/auth/login", json={"username": "a", "password": "b"})
+    assert r.status_code == 503
+
+
+def test_seed_history_failure_is_stated_not_silent(monkeypatch):
+    """REVIEW.md defect 11: when the seed's own history can't be fetched the
+    behavioural checks silently don't run, and the officer read "no typology
+    matched" as a finding."""
+    from types import SimpleNamespace
+
+    def boom(_address):
+        raise RuntimeError("Tronscan HTTP 429")
+    result = SimpleNamespace(seed_address="0xaaa", caveats=[])
+    assert api_main._seed_txs(result, {"fetch": boom}) == []
+    assert any("Tronscan HTTP 429" in c for c in result.caveats)
+
+
 def test_unwired_chain_is_rejected(monkeypatch):
     client = _client(monkeypatch)
     r = client.post("/v1/trace", json={"address": "1abc", "chain": "Bitcoin — coming soon"}, headers=AUTH_HEADERS)

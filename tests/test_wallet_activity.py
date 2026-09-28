@@ -92,8 +92,11 @@ def test_falls_back_to_the_dominant_asset_when_the_trace_never_picked_one():
     """A hop-0 terminal match (the seed itself is already labelled) never
     sets result.asset -- this must not crash, and must not silently mix
     every asset the wallet ever touched into one meaningless total."""
-    txs = [_tx("0xfunder1", SEED, 500, 1000, asset="USDT", contract="0xusdt"),
-           _tx("0xfunder2", SEED, 500, 1100, asset="USDT", contract="0xusdt"),
+    # The real Ethereum USDT contract: app/assets.py only lets canonical
+    # token contracts compete with native coins for "dominant".
+    usdt = "0xdac17f958d2ee523a2206206994597c13d831ec7"
+    txs = [_tx("0xfunder1", SEED, 500, 1000, asset="USDT", contract=usdt),
+           _tx("0xfunder2", SEED, 500, 1100, asset="USDT", contract=usdt),
            _tx("0xother", SEED, 1, 1200, asset="ETH", contract="", decimals=18)]
     wa = api_main._wallet_activity(_result(asset=None), txs)
     assert all(e["asset"] == "USDT" for e in wa["edges"])

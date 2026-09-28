@@ -61,7 +61,9 @@ def _paged(action: str, address: str, chainid: int, api_key: str, max_records: i
             "chainid": chainid, "module": "account", "action": action,
             "address": address, "startblock": 0, "endblock": 99999999,
             "page": page, "offset": min(PAGE_SIZE, max_records - len(collected)),
-            "sort": "asc", "apikey": api_key,
+            # Newest first: under the record cap, a busy wallet's oldest
+            # transfers pre-date the complaint and say nothing about it.
+            "sort": "desc", "apikey": api_key,
         })
         collected.extend(rows)
         if len(rows) < PAGE_SIZE:

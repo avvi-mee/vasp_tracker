@@ -6,5 +6,5 @@ look like a dead end. See research/08-demo-addresses.md for sourcing.
 """
 
 KNOWN_MIXERS = {
-    ("ETH", "0x8589427373d6d84e98730d7795d8f6f8731fda16"): "Tornado Cash: Donation address (OFAC-sanctioned Aug 2022)",
+    ("ETH", "0x8589427373d6d84e98730d7795d8f6f8731fda16"): "Tornado Cash: Donation address (mixer; OFAC-delisted 21 Mar 2025)",
 }

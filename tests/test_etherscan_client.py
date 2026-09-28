@@ -26,6 +26,15 @@ def _mock_get(json_data):
 
 
 @patch("app.api_clients.etherscan.requests.get")
+def test_reads_the_newest_records_not_the_oldest(mock_get):
+    """REVIEW.md defect 9: with a record cap, sort=asc returned a busy
+    wallet's first 2,000 transfers — years before the complaint."""
+    mock_get.return_value = _mock_get(FAKE_RESPONSE)
+    fetch_transactions("0xaaa", api_key="fake")
+    assert all(c.kwargs["params"]["sort"] == "desc" for c in mock_get.call_args_list)
+
+
+@patch("app.api_clients.etherscan.requests.get")
 def test_polygon_uses_correct_chainid_and_asset_type(mock_get):
     mock_get.return_value = _mock_get(FAKE_RESPONSE)
 

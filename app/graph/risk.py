@@ -39,6 +39,12 @@ MIXER_CATEGORIES = {"mixer", "mixing_service", "coinjoin"}
 # activities" explicitly, so this gets its own high-severity case rather
 # than falling into case 5's generic "no specific rule" bucket.
 DARKNET_MARKET_CATEGORIES = {"market"}
+# "illicit" is what chain_native_labels.entity_category() assigns to abuse-
+# tagged and hack/scam-worded labels; "black_list" is GraphSense's own.
+ILLICIT_CATEGORIES = {"illicit", "black_list"}
+# Same bar trace.py uses for "material" — a branch this big was followed on
+# purpose, so what it reached counts.
+SIDE_BRANCH_SHARE = 0.10
 
 # Categories whose ordinary business *is* the behaviour the typology
 # detectors look for. Checked live: Binance's own Tron hot wallet fires
@@ -59,17 +65,62 @@ def _explorer_flags_on_path(trace_result) -> list[str]:
     return [a for a in trace_result.path if a in flagged]
 
 
+def _chainalysis_hits(trace_result) -> set[str]:
+    """Addresses either Chainalysis source lists — the on-chain oracle or the
+    Sanctions Screening API.
+
+    Unioned rather than required to agree, because they do not have the same
+    reach: the oracle is EVM-only, the API covers every chain but needs a
+    key. On a Bitcoin trail only the API can answer; on an EVM trail with no
+    key configured, only the oracle can. Demanding both would mean the
+    stricter source silently disabling the other.
+
+    None from either client means "not consulted" and must not be read as
+    "clean". Flattening to an empty set is safe *here* only because every
+    caller below asks "is this address listed", never "was this chain
+    covered" — that second question is answered for the officer from the
+    trace payload's own oracle_sanctioned / api_sanctioned fields, and in the
+    certificate's sanctions_screening block, not from a risk level.
+    """
+    return (set(getattr(trace_result, "oracle_sanctioned", None) or ())
+            | set(getattr(trace_result, "api_sanctioned", None) or ()))
+
+
 def _assess_trail(trace_result) -> RiskAssessment:
-    # 1. Does the trace path pass through any known sanctioned/exploit address (our small curated
-    #    watchlist)? Highest severity — this isn't a compliance question, it's a direct watchlist hit.
-    for addr in trace_result.path:
+    # 1. Does the trace path pass through a sanctioned/exploit address? Highest severity — this
+    #    isn't a compliance question, it's a direct watchlist hit.
+    #
+    #    Independent sources answer it. Our own curated list + the vendored OFAC SDN dump
+    #    (known_illicit.py) is a snapshot: exactly as current as the last `git pull` in that
+    #    directory, and OFAC-only. Chainalysis — via its on-chain oracle, its Screening API, or
+    #    both — is read at query time and covers EU and UN designations too. Any one firing is
+    #    enough for HIGH; which ones fired goes in the reason, because "two sources agree" and
+    #    "only the live one knows about this yet" are different strengths of evidence and an
+    #    officer should see which they have.
+    chainalysis = _chainalysis_hits(trace_result)
+    # Every followed path, primary first. A sanctioned address is a hit on
+    # any branch, whatever its share.
+    on_trail = list(dict.fromkeys(
+        [*trace_result.path, *(a for c in getattr(trace_result, "candidates", None) or () for a in c.path)]))
+    for addr in on_trail:
         hit = check_illicit(addr)
-        if hit:
+        on_chainalysis = addr in chainalysis
+        if hit or on_chainalysis:
+            if hit and on_chainalysis:
+                reason = (f"{hit['label']} — {hit['reason']}. Independently confirmed by "
+                          f"Chainalysis sanctions data.")
+            elif hit:
+                reason = f"{hit['label']} — {hit['reason']}"
+            else:
+                reason = (f"{addr} is listed by Chainalysis sanctions data "
+                          f"(US/EU/UN designations, read at query time). Not present in this "
+                          f"build's vendored OFAC SDN snapshot — refresh it, or treat Chainalysis "
+                          f"as the more current of the two.")
             return RiskAssessment(
                 compliance_status="n/a",
                 compliance_detail="Trail leads to a sanctioned/flagged address, not a VASP.",
                 risk_flag=True, risk_level="high",
-                risk_reason=f"{hit['label']} — {hit['reason']}",
+                risk_reason=reason,
             )
 
     # 2. Does the MATCHED LABEL ITSELF indicate a sanctions listing? This catches the ~1,150 real
@@ -106,6 +157,36 @@ def _assess_trail(trace_result) -> RiskAssessment:
             risk_flag=True, risk_level="high",
             risk_reason=f"Funds reached a labeled darknet market ({trace_result.label}).",
         )
+
+    # 3c. Illicit actor — ransomware, scam, phishing, hack, terrorism
+    #     campaigns. GraphSense marks these with `abuse` rather than a
+    #     category (see chain_native_labels.entity_category).
+    if entity_category in ILLICIT_CATEGORIES:
+        return RiskAssessment(
+            compliance_status="n/a",
+            compliance_detail="Trail leads to an address labelled as a criminal actor, not a VASP.",
+            risk_flag=True, risk_level="high",
+            risk_reason=f"Funds reached an address labelled '{trace_result.label}' "
+                        f"(ransomware / scam / hack source: {trace_result.source}).",
+        )
+
+    # 3d. A material side branch reached a mixer, darknet market or criminal
+    #     actor. The primary path is only the largest share, not the whole
+    #     story: 60% to Binance and 40% to Tornado is not a clean trail.
+    for c in getattr(trace_result, "candidates", None) or ():
+        category = (c.entity_type or "").lower()
+        risky = (category in MIXER_CATEGORIES or category in DARKNET_MARKET_CATEGORIES
+                 or category in ILLICIT_CATEGORIES
+                 or (c.label and any(kw in c.label.lower() for kw in SANCTIONS_KEYWORDS)))
+        if c.path != trace_result.path and c.value_share >= SIDE_BRANCH_SHARE and risky:
+            return RiskAssessment(
+                compliance_status="n/a",
+                compliance_detail="A material share of the funds left the main path for a high-risk entity.",
+                risk_flag=True, risk_level="high",
+                risk_reason=(f"{c.value_share:.0%} of the traced value reached {c.label} ({c.entity_type}) "
+                             f"on a side branch, while the main path reached "
+                             f"{trace_result.label or 'no named entity'}."),
+            )
 
     # 4. Labeled exchange — severity follows its FIU-IND compliance status.
     if trace_result.entity_type in ("exchange", "exchange cluster") and trace_result.label:

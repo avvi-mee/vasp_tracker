@@ -45,6 +45,11 @@ CATEGORY_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     # attribute. They are dropped entirely below rather than labeled, so a
     # trace walks past the USDT contract instead of "reaching" it.
     (("token", "contract", "trc20", "trc10"), "token_contract"),
+    # Before the exchange names: "upbit hack" / "Poloniex hack" name the
+    # victim exchange, but the address belongs to the thief.
+    (("phish", "scam", "fake", "hack", "exploit", "fraud", "ransom", "stolen", "heist"), "illicit"),
+    (("tornado", "mixer", "mixing", "tumbler", "blender"), "mixer"),
+    (("bridge",), "bridge"),
     (("binance", "okx", "okex", "huobi", "htx", "bybit", "gate", "mexc", "mxc",
       "kucoin", "poloniex", "bitfinex", "kraken", "coinbase", "bitget", "bitmart",
       "whitebit", "coinex", "crypto.com", "upbit", "bithumb", "bitkub", "bitstamp",
@@ -55,7 +60,6 @@ CATEGORY_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("tether", "circle", "paxos", "treasury"), "issuer"),
     (("justlend", "justswap", "sunswap", "sun.io", "just ", "swap", "dex"), "defi"),
     (("foundation", "dao", "labs"), "organization"),
-    (("poloniex hack", "phish", "scam", "fake", "hack", "exploit"), "illicit"),
     (("casino", "bet", "dice", "lottery", "gambl"), "gambling"),
 )
 
@@ -78,6 +82,18 @@ def categorize(tag: str) -> str:
         if any(k in lowered for k in keywords):
             return category
     return "service"
+
+
+def entity_category(rec: dict) -> str:
+    """The category of a label record from any source. GraphSense leaves
+    `category` empty on 81,815 labels — ransomware, sextortion, hacks,
+    "defi fraud" — and marks them with `abuse` instead; defaulting those to
+    "exchange" turned ransomware wallets into disclosure targets."""
+    if rec.get("category"):
+        return rec["category"]
+    if rec.get("abuse"):
+        return "illicit"
+    return categorize(rec.get("label") or "")
 
 
 def harvest(txs: list[dict], currency: str) -> dict[tuple[str, str], dict]:

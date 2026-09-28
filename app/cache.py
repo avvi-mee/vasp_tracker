@@ -14,17 +14,20 @@ that helps today, not a replacement for it.
 """
 import threading
 import time
-from typing import Callable
+from typing import Callable, TypeVar
 
 _TTL_SECONDS = 60
 _lock = threading.Lock()
-_cache: dict[tuple, tuple[float, list[dict]]] = {}
+_cache: dict[tuple, tuple[float, object]] = {}
+_T = TypeVar("_T")
 # ponytail: no eviction/size cap — fine for a demo process that runs for a
 # session, not for a server left running for days. Add an LRU cap or move to
 # Redis before that's a real deployment concern.
 
 
-def cached_fetch(key: tuple, fetch_fn: Callable[[], list[dict]]) -> list[dict]:
+def cached_fetch(key: tuple, fetch_fn: Callable[[], _T]) -> _T:
+    """Generic in value type: chain clients cache tx lists, the Chainalysis
+    oracle client caches a bool per address. Same TTL, same key discipline."""
     now = time.monotonic()
     with _lock:
         hit = _cache.get(key)
