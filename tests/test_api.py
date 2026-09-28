@@ -235,6 +235,40 @@ def test_generate_sahyog_draft_saves_the_recommended_instrument(monkeypatch):
     assert saved["draft"]["seed_address"] == "0xaaa"
 
 
+def test_linked_cases_endpoint_returns_the_grouped_links(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    monkeypatch.setattr(api_main, "find_linked_cases",
+                        lambda case_id: [{"case_id": 7, "strength": "same_beneficiary", "shared": []}])
+    r = client.get("/v1/cases/1/linked", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()[0]["strength"] == "same_beneficiary"
+
+
+def test_link_clusters_endpoint(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "list_link_clusters",
+                        lambda limit=20: [{"address": "Tdep", "case_count": 3, "roles": ["deposit"]}])
+    r = client.get("/v1/links", headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert r.json()[0]["case_count"] == 3
+
+
+def test_sahyog_freeze_draft_uses_the_state_route(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "get_case", lambda case_id: _fake_case_row())
+    saved = {}
+    monkeypatch.setattr(
+        api_main, "save_sahyog_draft",
+        lambda case_id, instrument, draft, officer_id: saved.update(instrument=instrument, draft=draft),
+    )
+    r = client.post("/v1/cases/1/sahyog", json={"request_type": "freeze", "state": "Karnataka"},
+                    headers=AUTH_HEADERS)
+    assert r.status_code == 200
+    assert saved["instrument"] == "s106_bnss"
+    assert saved["draft"]["request_type"] == "vasp_freeze_request"
+
+
 def _fake_watch_row(**overrides):
     row = {
         "id": 1, "address": "0xaaa", "chain": "Ethereum", "added_by_officer_id": 1,

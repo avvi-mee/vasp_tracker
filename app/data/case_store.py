@@ -14,6 +14,8 @@ import psycopg2.extras
 import psycopg2.extensions
 import psycopg2.pool
 
+from app.graph.links import case_link_keys, group_linked_rows
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cases (
     id SERIAL PRIMARY KEY,
@@ -63,7 +65,7 @@ ALTER TABLE cases ADD COLUMN IF NOT EXISTS cctns_fir_number TEXT;
 -- than a separate table: in practice a case has at most one live disclosure
 -- request, and giving it its own table would just be a 1:1 join every read.
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_status TEXT;       -- NULL until a draft exists
-ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_instrument TEXT;   -- 's94_bnss' | 's107_bnss' | 'pmla_s5' | 's63_bsa'
+ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_instrument TEXT;   -- a key of app/sahyog/gateway.py INSTRUMENTS
 ALTER TABLE cases ADD COLUMN IF NOT EXISTS sahyog_draft JSONB;
 
 CREATE TABLE IF NOT EXISTS case_events (
@@ -99,6 +101,28 @@ CREATE TABLE IF NOT EXISTS upi_hops (
     officer_id INTEGER REFERENCES officers(id),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Cross-case linking: every address a case can be matched on (see
+-- app/graph/links.py for which ones, and why the exchange hot wallet isn't).
+CREATE TABLE IF NOT EXISTS case_addresses (
+    case_id INTEGER NOT NULL REFERENCES cases(id),
+    address TEXT NOT NULL,
+    chain TEXT NOT NULL,
+    role TEXT NOT NULL,           -- 'seed' | 'path' | 'deposit'
+    PRIMARY KEY (case_id, address, role)
+);
+CREATE INDEX IF NOT EXISTS case_addresses_lookup ON case_addresses (chain, address);
+
+-- Backfill cases saved before linking existed, from their stored path. Only
+-- touches cases with no rows yet, so re-running on every init_db is cheap.
+-- (Deposit addresses were never stored on the case, so old cases link on
+-- seed and path only.)
+INSERT INTO case_addresses (case_id, address, chain, role)
+SELECT c.id, p.addr, c.chain, CASE WHEN p.n = 1 THEN 'seed' ELSE 'path' END
+FROM cases c, jsonb_array_elements_text(c.path) WITH ORDINALITY AS p(addr, n)
+WHERE NOT EXISTS (SELECT 1 FROM case_addresses a WHERE a.case_id = c.id)
+  AND (c.label IS NULL OR p.n < jsonb_array_length(c.path))
+ON CONFLICT DO NOTHING;
 """
 
 SAHYOG_STATUSES = ("draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled")
@@ -195,6 +219,13 @@ def save_case(chain: str, trace_result, risk_assessment, officer_id: int | None 
                 ),
             )
             case_id = cur.fetchone()[0]
+            # executemany, not execute: one round trip's worth of intent, and
+            # the case row and its link keys commit together or not at all.
+            cur.executemany(
+                "INSERT INTO case_addresses (case_id, address, chain, role) VALUES (%s, %s, %s, %s) "
+                "ON CONFLICT DO NOTHING",
+                [(case_id, addr, chain, role) for addr, role in case_link_keys(trace_result)],
+            )
         conn.commit()
         if officer_id is not None:
             log_case_event(case_id, officer_id, "trace_saved", conn=conn)
@@ -210,6 +241,58 @@ def list_cases(limit: int = 50, conn=None) -> list[dict]:
     try:
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             cur.execute("SELECT * FROM cases ORDER BY created_at DESC LIMIT %s", (limit,))
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def find_linked_cases(case_id: int, conn=None) -> list[dict]:
+    """Other cases sharing any link address with this one, strongest first."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT other.case_id, other.address, mine.role AS my_role, other.role AS their_role,
+                       c.seed_address, c.chain, c.label, c.ncrp_ack_number, c.cctns_fir_number,
+                       c.status, c.created_at
+                FROM case_addresses mine
+                JOIN case_addresses other
+                  ON other.chain = mine.chain AND other.address = mine.address
+                 AND other.case_id <> mine.case_id
+                JOIN cases c ON c.id = other.case_id
+                WHERE mine.case_id = %s
+                """,
+                (case_id,),
+            )
+            return group_linked_rows([dict(row) for row in cur.fetchall()])
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def list_link_clusters(limit: int = 20, conn=None) -> list[dict]:
+    """Addresses shared by two or more cases — the dashboard's view of
+    likely mule / beneficiary networks. Deposit-address clusters first."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT chain, address, array_agg(DISTINCT role) AS roles,
+                       COUNT(DISTINCT case_id) AS case_count,
+                       array_agg(DISTINCT case_id) AS case_ids
+                FROM case_addresses
+                GROUP BY chain, address
+                HAVING COUNT(DISTINCT case_id) > 1
+                ORDER BY bool_or(role = 'deposit') DESC, COUNT(DISTINCT case_id) DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
             return [dict(row) for row in cur.fetchall()]
     finally:
         if owns_conn:

@@ -1,0 +1,1281 @@
+<title>VASP-Trace SIH26182 Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap">
+<style>
+:root{
+  --ground:#eef1f7; --paper:#ffffff; --ledger:#f4f6fa; --ink:#14181f; --ink-soft:#4f586b; --ink-faint:#7e879b;
+  --wire:#dde1e9; --wire-strong:#c3c9d6; --navy:#1b2a4a; --navy-soft:#2f4270; --gold:#8c661f; --link:#2f4270;
+  --done-fg:#256b47; --done-bg:#eaf5ef; --done-line:#9ac9b0;
+  --partial-fg:#7a5716; --partial-bg:#fbf3e4; --partial-line:#dfc189;
+  --mocked-fg:#8c3420; --mocked-bg:#fdeceb; --mocked-line:#e0a49a;
+  --missing-fg:#6d1b1b; --missing-bg:#fbe3e1; --missing-line:#c9756a;
+  --neutral-fg:#4b5568; --neutral-bg:#f1f3f7; --neutral-line:#cdd3df;
+  --shadow:0 1px 2px rgba(20,24,31,.06),0 4px 16px rgba(20,24,31,.05);
+  --sans:"IBM Plex Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --cond:"IBM Plex Sans Condensed","IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#0e1320; --paper:#151c2b; --ledger:#1a2334; --ink:#e4e8ef; --ink-soft:#a8b0c2; --ink-faint:#7c869b;
+    --wire:#27314a; --wire-strong:#36415d; --navy:#b4c4ee; --navy-soft:#93a7dd; --gold:#d9b46c; --link:#a9bdf1;
+    --done-fg:#7fd1a5; --done-bg:#122a20; --done-line:#2f6c4d;
+    --partial-fg:#e6c27a; --partial-bg:#2b2413; --partial-line:#6f5b2d;
+    --mocked-fg:#f2a592; --mocked-bg:#2f1b17; --mocked-line:#7b4134;
+    --missing-fg:#f59393; --missing-bg:#341618; --missing-line:#7f3237;
+    --neutral-fg:#b9c1d1; --neutral-bg:#1d2433; --neutral-line:#3a445c;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#0e1320; --paper:#151c2b; --ledger:#1a2334; --ink:#e4e8ef; --ink-soft:#a8b0c2; --ink-faint:#7c869b;
+  --wire:#27314a; --wire-strong:#36415d; --navy:#b4c4ee; --navy-soft:#93a7dd; --gold:#d9b46c; --link:#a9bdf1;
+  --done-fg:#7fd1a5; --done-bg:#122a20; --done-line:#2f6c4d;
+  --partial-fg:#e6c27a; --partial-bg:#2b2413; --partial-line:#6f5b2d;
+  --mocked-fg:#f2a592; --mocked-bg:#2f1b17; --mocked-line:#7b4134;
+  --missing-fg:#f59393; --missing-bg:#341618; --missing-line:#7f3237;
+  --neutral-fg:#b9c1d1; --neutral-bg:#1d2433; --neutral-line:#3a445c;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 16px rgba(0,0,0,.3);
+}
+*{box-sizing:border-box}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.58;-webkit-font-smoothing:antialiased}
+a{color:var(--link);text-underline-offset:2px;text-decoration-thickness:1px;overflow-wrap:anywhere}
+a:focus-visible,button:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--navy-soft);outline-offset:2px;border-radius:3px}
+code,.mono{font-family:var(--mono);font-size:.88em}
+code{background:var(--ledger);border:1px solid var(--wire);border-radius:4px;padding:0 .3em;overflow-wrap:anywhere}
+h1,h2,h3,h4{text-wrap:balance;color:var(--ink);margin:0}
+h1{font-family:var(--cond);font-weight:700;font-size:clamp(1.9rem,5.2vw,2.8rem);line-height:1.08;letter-spacing:-.01em}
+h2{font-family:var(--cond);font-weight:700;font-size:clamp(1.45rem,3.6vw,1.9rem);line-height:1.15}
+h3{font-size:1.12rem;font-weight:650;line-height:1.3;margin-top:28px}
+h4{font-size:.98rem;font-weight:650;margin-top:18px}
+p{margin:10px 0;max-width:72ch}
+ul,ol{margin:10px 0;padding-left:1.3em;max-width:78ch}
+li{margin:4px 0}
+li>ul,li>ol{margin:4px 0}
+strong{font-weight:650}
+.eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.09em;text-transform:uppercase;color:var(--gold);font-weight:600}
+.muted{color:var(--ink-soft)}
+.faint{color:var(--ink-faint)}
+.small{font-size:.86rem}
+
+/* top bar */
+.bar{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--paper);background:color-mix(in srgb,var(--paper) 92%,transparent);backdrop-filter:saturate(1.2) blur(8px);-webkit-backdrop-filter:saturate(1.2) blur(8px);border-bottom:1px solid var(--wire)}
+.bar-in{max-width:1180px;margin:0 auto;padding-inline:clamp(16px,3.5vw,32px);padding-block:8px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.brand{font-family:var(--cond);font-weight:700;font-size:1rem;color:var(--navy);white-space:nowrap}
+.brand span{font-family:var(--mono);font-weight:500;font-size:.72rem;color:var(--ink-faint);margin-left:6px;letter-spacing:.05em}
+.nav{display:flex;flex-wrap:wrap;gap:4px 2px;margin-left:auto}
+.nav a{font-size:.8rem;color:var(--ink-soft);text-decoration:none;padding:4px 8px;border-radius:4px}
+.nav a:hover{background:var(--ledger);color:var(--ink)}
+.nav a[aria-current="true"]{color:var(--navy);background:var(--ledger);font-weight:600}
+.jump{display:none;margin-left:auto;font:inherit;font-size:.86rem;padding:6px 8px;border:1px solid var(--wire-strong);border-radius:6px;background:var(--paper);color:var(--ink);max-width:60vw}
+@media (max-width:980px){.nav{display:none}.jump{display:block}}
+
+/* sheet */
+.sheet{max-width:1180px;margin:0 auto;padding-inline:clamp(16px,3.5vw,32px);padding-block:22px 64px}
+section{scroll-margin-top:64px;padding-block:34px 8px;border-top:1px solid var(--wire)}
+section:first-of-type{border-top:0}
+.sec-head{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+
+/* hero */
+.hero{background:var(--paper);border:1px solid var(--wire);border-radius:10px;box-shadow:var(--shadow);padding:clamp(18px,3.6vw,34px);display:grid;gap:18px}
+.hero .sub{font-size:1.02rem;color:var(--ink-soft);max-width:70ch;margin:0}
+.meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-family:var(--mono);font-size:.74rem;color:var(--ink-faint)}
+.verdict{border-top:1px solid var(--wire);padding-top:16px;display:grid;gap:14px}
+.verdict-line{font-size:1.08rem;font-weight:600;max-width:70ch;margin:0}
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+@media (max-width:760px){.metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.metric{background:var(--ledger);border:1px solid var(--wire);border-radius:8px;padding:10px 12px;display:grid;gap:2px}
+.metric b{font-family:var(--cond);font-size:1.45rem;line-height:1.1;font-variant-numeric:tabular-nums;color:var(--navy)}
+.metric span{font-size:.8rem;color:var(--ink-soft);line-height:1.35}
+.scale{display:grid;gap:6px}
+.scale-bar{display:flex;height:14px;border-radius:4px;overflow:hidden;border:1px solid var(--wire-strong)}
+.scale-bar i{display:block;height:100%}
+.scale-legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.8rem;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px;border:1px solid var(--wire-strong)}
+.b-done{background:var(--done-fg)}.b-partial{background:var(--partial-line)}.b-mocked{background:var(--mocked-line)}.b-missing{background:var(--missing-fg)}
+.summary{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:8px;max-width:none}
+.summary>li{counter-increment:s;display:grid;grid-template-columns:2.1em 1fr;gap:6px;margin:0;padding:8px 0;border-top:1px dashed var(--wire)}
+.summary>li::before{content:counter(s,decimal-leading-zero);font-family:var(--mono);font-size:.78rem;color:var(--ink-faint);padding-top:2px}
+.summary>li>div{min-width:0}
+.summary ul{margin:4px 0 0}
+.hash{font-family:var(--mono);font-size:.74rem;color:var(--ink-faint);overflow-wrap:anywhere}
+
+/* chips */
+.chip{display:inline-block;font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.03em;line-height:1.5;padding:0 6px;border-radius:4px;border:1px solid;white-space:nowrap;vertical-align:1px}
+.s-done{color:var(--done-fg);background:var(--done-bg);border-color:var(--done-line)}
+.s-partial{color:var(--partial-fg);background:var(--partial-bg);border-color:var(--partial-line)}
+.s-mocked{color:var(--mocked-fg);background:var(--mocked-bg);border-color:var(--mocked-line)}
+.s-missing{color:var(--missing-fg);background:var(--missing-bg);border-color:var(--missing-line)}
+.s-neutral{color:var(--neutral-fg);background:var(--neutral-bg);border-color:var(--neutral-line)}
+.e{font-family:var(--mono);font-size:.68rem;font-weight:600;padding:0 4px;border-radius:3px;border:1px solid;vertical-align:1px;white-space:nowrap}
+.e-F{color:var(--done-fg);border-color:var(--done-line);background:var(--done-bg)}
+.e-Q{color:var(--navy);border-color:var(--wire-strong);background:var(--ledger)}
+.e-T{color:var(--partial-fg);border-color:var(--partial-line);background:var(--partial-bg)}
+.e-L{color:var(--navy-soft);border-color:var(--navy-soft);background:var(--paper)}
+.e-U{color:var(--missing-fg);border-color:var(--missing-line);background:var(--missing-bg)}
+.e-I{color:var(--neutral-fg);border-color:var(--neutral-line);background:var(--neutral-bg)}
+
+/* tables */
+.tbl{overflow-x:auto;border:1px solid var(--wire);border-radius:8px;background:var(--paper);margin:12px 0;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:.86rem;line-height:1.45}
+th,td{text-align:left;vertical-align:top;padding:8px 10px;border-bottom:1px solid var(--wire)}
+th{font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);font-weight:600;background:var(--ledger);white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.w-wide{min-width:760px}.w-xwide{min-width:980px}.w-mid{min-width:600px}
+td ul{margin:0;padding-left:1.1em}
+
+/* callouts & blocks */
+.note{background:var(--ledger);border:1px solid var(--wire);border-radius:8px;padding:12px 14px;margin:12px 0;max-width:86ch}
+.note.warn{background:var(--partial-bg);border-color:var(--partial-line)}
+.note.bad{background:var(--missing-bg);border-color:var(--missing-line)}
+.note p{margin:6px 0}
+.note>:first-child{margin-top:0}.note>:last-child{margin-bottom:0}
+pre.code{font-family:var(--mono);font-size:.78rem;line-height:1.5;background:var(--ledger);border:1px solid var(--wire);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:12px 0;white-space:pre}
+pre.mermaid{background:var(--paper);border:1px solid var(--wire);border-radius:8px;padding:12px;overflow-x:auto;margin:12px 0}
+.two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.two{grid-template-columns:1fr}}
+.panel{background:var(--paper);border:1px solid var(--wire);border-radius:8px;padding:14px 16px}
+.panel h4{margin-top:0}
+.srcs{font-size:.8rem;color:var(--ink-soft);columns:2 320px;column-gap:28px;padding-left:1.1em;max-width:none}
+.srcs li{break-inside:avoid;margin:3px 0}
+
+/* coverage cards */
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin:14px 0 6px}
+.filters button{font:inherit;font-size:.82rem;padding:5px 11px;border-radius:999px;border:1px solid var(--wire-strong);background:var(--paper);color:var(--ink-soft);cursor:pointer}
+.filters button[aria-pressed="true"]{background:var(--navy);border-color:var(--navy);color:var(--paper);font-weight:600}
+.reqs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:10px}
+@media (max-width:860px){.reqs{grid-template-columns:1fr}}
+.req{background:var(--paper);border:1px solid var(--wire);border-radius:8px;padding:12px 14px;display:grid;gap:8px;align-content:start}
+.req-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.req-id{font-family:var(--mono);font-size:.74rem;color:var(--ink-faint)}
+.req h4{margin:2px 0 0;font-size:.95rem}
+.req dl{margin:0;display:grid;gap:6px}
+.req dt{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-faint);font-weight:600}
+.req dd{margin:0;font-size:.86rem}
+.req dd ul{margin:2px 0;padding-left:1.1em}
+.group-label{margin-top:22px;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+
+/* Q&A + demo */
+.qa{display:grid;gap:10px;margin:12px 0}
+.qa article{background:var(--paper);border:1px solid var(--wire);border-radius:8px;padding:12px 14px}
+.qa h4{margin:0 0 6px;font-size:.96rem}
+.qa h4 b{font-family:var(--mono);color:var(--gold);font-weight:600;margin-right:6px}
+.qa p,.qa ul{margin:6px 0;max-width:none}
+.pitch{background:var(--paper);border:1px solid var(--wire-strong);border-radius:8px;padding:14px 16px;display:grid;gap:10px}
+.pitch p{margin:0;font-size:1.02rem;font-style:italic;max-width:70ch}
+.btn{justify-self:start;font:inherit;font-size:.82rem;padding:6px 12px;border-radius:6px;border:1px solid var(--navy);background:var(--navy);color:var(--paper);cursor:pointer}
+footer{margin-top:40px;padding-top:16px;border-top:1px solid var(--wire);font-size:.8rem;color:var(--ink-faint)}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<header class="bar">
+  <div class="bar-in">
+    <div class="brand">VASP-Trace review<span>SIH26182</span></div>
+    <nav class="nav" aria-label="Sections">
+      <a href="#summary">Summary</a><a href="#inventory">1 · Inventory</a><a href="#coverage">2 · Coverage</a><a href="#research">3 · Research</a><a href="#decisions">4 · Decisions</a><a href="#mvp">5 · MVPs</a><a href="#solution">6 · Solution</a><a href="#strategy">7 · Strategy</a><a href="#plan">8 · Plan</a><a href="#assumptions">Assumptions</a>
+    </nav>
+    <select class="jump" id="jump" aria-label="Jump to section">
+      <option value="">Jump to…</option>
+      <option value="summary">Executive summary</option>
+      <option value="inventory">1 · Codebase inventory</option>
+      <option value="coverage">2 · Coverage matrix</option>
+      <option value="research">3 · Web research</option>
+      <option value="decisions">4 · Feature decisions</option>
+      <option value="mvp">5 · Hard parts: MVPs</option>
+      <option value="solution">6 · End-to-end solution</option>
+      <option value="strategy">7 · SIH strategy</option>
+      <option value="plan">8 · Action plan</option>
+      <option value="assumptions">Assumptions</option>
+    </select>
+  </div>
+</header>
+
+<main class="sheet">
+
+<section id="summary" aria-labelledby="h-summary">
+  <div class="hero">
+    <div class="eyebrow">SIH26182 · MHA / I4C · reviewed 26–27 Sep 2026</div>
+    <h1 id="h-summary">VASP-Trace against the full problem statement</h1>
+    <p class="sub">A read-only review of the Automated Blockchain Intelligence &amp; VASP Attribution Engine, with live runs, sourced research, feature decisions, a demo script, jury answers and a 14-day plan.</p>
+    <div class="meta"><span>branch main @ 1628879 + working tree</span><span>257 tests run</span><span>9 live traces · 6 chains</span><span>files: docs/sih-review/</span></div>
+
+    <div class="verdict">
+      <p class="verdict-line">Verdict: a real, honest attribution prototype. It is not finale-ready yet: six reproducible correctness bugs, misrouted legal instruments, and two missing compulsory items.</p>
+      <div class="metrics">
+        <div class="metric"><b>30% / 57.5%</b><span>compulsory items covered, strict / weighted (Partial = ½)</span></div>
+        <div class="metric"><b>257 pass</b><span>offline tests in 4.2 s, all network mocked</span></div>
+        <div class="metric"><b>3.0 s</b><span>live trace of a real Indian-case Tron wallet to “Binance-Hot 7”</span></div>
+        <div class="metric"><b>6 bugs</b><span>correctness defects reproduced against the real code</span></div>
+      </div>
+      <div class="scale" aria-label="Compulsory requirement status, 20 items">
+        <div class="scale-bar" role="img" aria-label="6 done, 11 partial, 1 mocked, 2 missing">
+          <i class="b-done" style="width:30%"></i><i class="b-partial" style="width:55%"></i><i class="b-mocked" style="width:5%"></i><i class="b-missing" style="width:10%"></i>
+        </div>
+        <div class="scale-legend"><span><i class="dot b-done"></i>Done 6</span><span><i class="dot b-partial"></i>Partial 11</span><span><i class="dot b-mocked"></i>Mocked 1</span><span><i class="dot b-missing"></i>Missing 2</span><span class="faint">of 20 compulsory items · optional: 3 of 5 done</span></div>
+      </div>
+    </div>
+
+    <ol class="summary">
+      <li><div><strong>Verdict.</strong> A real Indian-case Tron wallet was traced to “Binance-Hot 7” in 3 s, with deposit-address evidence and an India-specific evidence layer. Not finale-ready: 6 reproducible correctness bugs, misrouted legal instruments, 2 missing compulsory items.</div></li>
+      <li><div><strong>Coverage: 30% strict</strong> (6 of 20 fully done) / <strong>57.5% weighted</strong>. 11 partial, 1 mocked (SAHYOG routing), 2 missing (DeFi bridges, cross-chain swap services). Optional: 3 of 5 done.</div></li>
+      <li><div><strong>Strength 1.</strong> Live, ranked multi-hop tracing that names the <em>deposit address</em>, which is what a VASP can answer about. Behaviour-based risk flags a scam wallet even when the trail ends at a compliant exchange.</div></li>
+      <li><div><strong>Strength 2.</strong> Outputs no foreign tool emits: a BSA s.63 Part A/B certificate pack with a reproducible SHA-256, NCRP/CCTNS case fields, a UPI money trail, BNSS instrument routing.</div></li>
+      <li><div><strong>Strength 3.</strong> 257 offline tests pass in 4 s; every label carries provenance; thresholds are published; “unattributed ≠ clean” and “not consulted ≠ clear” hold end to end.</div></li>
+      <li><div><strong>Gaps 1–2.</strong> No bridge/swap identification or cross-chain mapping. SAHYOG is draft-only, and routing sends FIU-registered CoinDCX/WazirX to “s.63 certificate only”. It never separates disclosure (BNSS s.94) from freeze (s.106/s.107, where the 2026 High Courts disagree).</div></li>
+      <li><div><strong>Gaps 3–5.</strong>
+        <ul>
+          <li>Forensic correctness: no temporal ordering; 81,815 uncategorised labels (incl. Tornado pools and “upbit hack”) typed as exchanges with risk “none”; confidence ignores label quality; deposit overclaim.</li>
+          <li>Uneven chains: BTC dead without a key (Blockchair HTTP 430); BNB native-only; Solana unlabelled; only 45 static Tron labels.</li>
+          <li>No cross-case or scale layer.</li>
+        </ul></div></li>
+      <li><div><strong>Action 1 (1–2 days).</strong> Fix the 6 bugs and the routing: request type drives the instrument; registered list from the Lok Sabha answer plus the FIU-IND waves.</div></li>
+      <li><div><strong>Action 2 (2–3 days).</strong> Build cross-case linking via shared deposit addresses, and a VASP routing directory: the two recommended differentiators.</div></li>
+      <li><div><strong>Action 3 (3 days).</strong> Bridge/swap MVP (registry + THORChain memo + LI.FI/LayerZero lookups + “continue on chain Y”); swap Blockchair for Esplora; then a clearly labelled SAHYOG mock service for the demo.</div></li>
+    </ol>
+    <div class="hash">Live evidence-pack record from this review · SHA-256 186f8a3e49ccb96db91e95775d886aed9b31e6ff06cf6d39e6d24cd1cd372b45</div>
+  </div>
+</section>
+
+<section id="inventory" aria-labelledby="h-inv">
+  <div class="sec-head"><div class="eyebrow">Step 1</div><h2 id="h-inv">Codebase inventory</h2></div>
+
+  <h3>What was run, and what happened</h3>
+  <ul>
+    <li><strong>Test suite.</strong> <code>pytest tests/ -q</code> → 257 passed, 2 deprecation warnings, 4.24 s (Python 3.13.15). All network is mocked; there are no live or integration tests.</li>
+    <li><strong>Live API smoke test.</strong> The API ran locally with <code>DATABASE_URL</code> blanked, so nothing was written to the team’s Supabase, and a throwaway JWT secret for a test token. It used the configured keys (Etherscan, Tronscan, Helius, NodeReal; no Chainalysis or Blockchair key). <code>/openapi.json</code> lists 19 operations on 15 paths.</li>
+  </ul>
+  <div class="tbl"><table class="w-xwide">
+    <thead><tr><th>#</th><th>Input</th><th>Result</th><th>Hops</th><th>Conf.</th><th>Label source</th><th>Risk (basis)</th><th>Deposit address?</th><th>Instrument</th><th>Time</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Tron <code>TNnrfcBk7…P5</code>, a real case wallet cited in the code</td><td><strong>Binance-Hot 7</strong>, USDT-TRC20</td><td class="num">1</td><td class="num">0.75</td><td>Tronscan tag</td><td><span class="chip s-missing">HIGH</span> behaviour: many-to-one funnel (15 funders → 1) + rapid layering</td><td><span class="chip s-done">yes 0.95</span></td><td>BNSS s.94</td><td class="num">3.0 s</td></tr>
+      <tr><td>2</td><td>ETH <code>0x392704…7605</code>, team demo “3-hop USDC”</td><td><strong>Kraken 10</strong>, USDC</td><td class="num">3</td><td class="num">0.45</td><td>GraphSense (Etherscan label cloud)</td><td><span class="chip s-partial">MEDIUM</span> trail: FIU-IND Dec 2023 notice</td><td><span class="chip s-done">yes 0.95</span></td><td>PMLA s.5 (ED route)</td><td class="num">34.3 s</td></tr>
+      <tr><td>3</td><td>ETH <code>0x8aa878…1c65</code>, team demo “1-hop → Binance”</td><td>Binance 1, ETH</td><td class="num">1</td><td class="num">0.75</td><td>GraphSense</td><td>none</td><td><span class="chip s-missing">no 0.15</span> but the UI still shows “Deposit address identified”</td><td>BNSS s.94</td><td class="num">3.0 s</td></tr>
+      <tr><td>4</td><td>ETH Tornado Cash donation address</td><td>Mixer (curated)</td><td class="num">0</td><td class="num">0.95</td><td>curated list</td><td><span class="chip s-missing">HIGH</span></td><td>—</td><td>s.63 only</td><td class="num">10.3 s</td></tr>
+      <tr><td>5</td><td>ETH OFAC SDN <code>0x8576…353c</code></td><td>OFAC-listed (GraphSense)</td><td class="num">0</td><td class="num">0.90</td><td>GraphSense OFAC pack</td><td><span class="chip s-missing">HIGH</span> oracle confirms</td><td>—</td><td>s.63 only</td><td class="num">4.8 s</td></tr>
+      <tr><td>6</td><td>BTC <code>bc1q7c9y…6e0e</code> (CoinDCX)</td><td>CoinDCX 12</td><td class="num">0</td><td class="num">0.95</td><td>Indian VASP CSV (single-source, 0.75 tier)</td><td>none; compliance “unknown”</td><td>—</td><td>s.63 only (should be s.94)</td><td class="num">1.2 s</td></tr>
+      <tr><td>7</td><td>BNB <code>0x8894e0…d4e3</code></td><td>unattributed</td><td class="num">1</td><td class="num">0</td><td>—</td><td><span class="chip s-partial">MEDIUM</span> behaviour: “1,000 BNB × 7”</td><td>—</td><td>s.63 only</td><td class="num">2.2 s</td></tr>
+      <tr><td>8</td><td>Polygon <code>0x8aa878…1c65</code></td><td>unattributed, USDC.e</td><td class="num">1</td><td class="num">0</td><td>—</td><td><span class="chip s-missing">HIGH</span> behaviour</td><td>—</td><td>s.63 only</td><td class="num">3.4 s</td></tr>
+      <tr><td>9</td><td>Solana <code>5tzFk…uAi9</code></td><td>unattributed (followed an SPL token)</td><td class="num">2</td><td class="num">0</td><td>—</td><td>LOW</td><td>—</td><td>s.63 only</td><td class="num">3.4 s</td></tr>
+    </tbody>
+  </table></div>
+  <ul class="small">
+    <li>Row 4: the Chainalysis oracle said <strong>not sanctioned</strong>, while the tool’s label still reads “OFAC-sanctioned Aug 2022”. Treasury delisted Tornado Cash on 21 Mar 2025.</li>
+    <li>Row 6: the seed fetch failed with <strong>Blockchair HTTP 430</strong>, logged server-side and not shown to the user.</li>
+    <li>Row 7: the NodeReal key works, so BNB <em>is</em> live-tested now, contrary to the README.</li>
+    <li>Row 9: no dataset has Solana exchange labels.</li>
+  </ul>
+  <p>Other checks:</p>
+  <ul>
+    <li><code>POST /v1/certificate</code> → 200 in 1.7 s. The zip holds the JSON record, Part A, Part B and hash-report PDFs; the record includes the deposit-address finding and behavioural findings.</li>
+    <li><code>POST /v1/auth/login</code> with no database → HTTP 500; it should be 503.</li>
+    <li>Direct probes: Blockchair keyless → HTTP 430 <em>“Your IP address is temporary blacklisted…”</em>; Blockstream Esplora → HTTP 200; mempool.space → timeout.</li>
+  </ul>
+
+  <h4>Offline engine probes: all six suspected defects reproduced</h4>
+  <p class="small muted">Small scripts called the real functions with fake transaction lists.</p>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Probe</th><th>Result</th></tr></thead>
+    <tbody>
+      <tr><td>Deposit classifier returns <code>is_deposit_address=False</code> (0.15)</td><td>Summary still says a hop “behaves like an exchange deposit address”</td></tr>
+      <tr><td>Trail reaches a CoinDCX-labelled wallet</td><td>compliance <code>unknown</code> → instrument <strong>s63_bsa</strong>, “No specific disclosure/freeze instrument indicated yet”, while <code>legal_basis</code> says BNSS s.94</td></tr>
+      <tr><td>Same hop, three label qualities</td><td>operator-confirmed 0.80, single-source 0.80, explorer tag 0.75 (README says explorer tags are the “fixed 0.60” tier)</td></tr>
+      <tr><td>Outflow at t=50 before the inflow at t=100</td><td>Still followed → “reached CoinDCX” (a false attribution)</td></tr>
+      <tr><td>60% to an exchange, 40% to a mixer</td><td>Risk <strong>none</strong>: only the primary path is judged</td></tr>
+      <tr><td>1,000,000 fake “USDT” (other contract) + 5,000 real USDT to an exchange</td><td>The fake token is followed and the exchange is never reached</td></tr>
+      <tr><td>Trail to GraphSense label “upbit hack” (<code>category=None</code>)</td><td>Typed <strong>exchange</strong>, risk none, instrument s.63</td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Dataset profile</h4>
+  <ul>
+    <li><strong>GraphSense TagPacks:</strong> 500,115 labels.
+      <ul>
+        <li>By chain: BTC 483,296 (96.6%) · ETH 16,449 · TRX <strong>30</strong> · SOL 5 · MATIC 4 · BNB 0.</li>
+        <li>By category: exchange 337,610 · none <strong>81,815</strong> · miner 37,817 · coinjoin 36,550 · mixing_service 194 · market 328.</li>
+        <li>The Tornado Cash 0.1/1/10/100 ETH pools are present with <code>category=None</code>.</li>
+      </ul></li>
+    <li><strong>OFAC (0xB10C):</strong> 910 addresses loaded.</li>
+    <li><strong>Indian VASP CSV:</strong> 112 addresses (CoinDCX 97, WazirX 13, CoinSwitch 2). By chain: BTC 26, EVM 66, TRX 15, XRP 5 (XRP is not traced).</li>
+    <li>Snapshots date from 10–11 Sep 2026. On disk, GraphSense is 85 MB including a 42 MB parsed-label cache.</li>
+  </ul>
+
+  <h3>Stack: your understanding vs what was found</h3>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Layer</th><th>You said</th><th>Found</th></tr></thead>
+    <tbody>
+      <tr><td>Backend</td><td>FastAPI + NetworkX + PostgreSQL + JWT</td><td><span class="chip s-done">confirmed</span> NetworkX is a <code>DiGraph</code> store only (search is custom BFS). PostgreSQL on Supabase via a psycopg2 pool, raw SQL, schema created at start, no migrations. HS256 JWT with PBKDF2-SHA256 200k. Also a legacy Streamlit UI and a CLI; PDFs via fpdf2.</td></tr>
+      <tr><td>Frontend</td><td>Next.js 16 + React 19 + TS + Cytoscape.js</td><td><span class="chip s-done">confirmed</span> Next 16.3.5, React 19.2.8, TS 5, Tailwind 4, Cytoscape 3.34 + dagre. All pages are client components; token in <code>localStorage</code>.</td></tr>
+      <tr><td>Runtime</td><td>—</td><td>Python 3.13.15 in <code>.venv</code> (docs say 3.11). No Docker, no Redis, no queue.</td></tr>
+      <tr><td>Your “not done” list</td><td>Bridge &amp; swap identification · cross-chain mapping · real SAHYOG · Redis</td><td><span class="chip s-done">all four confirmed</span> SAHYOG is <em>less</em> than mocked in the main UI: the mock submit is called only by the legacy Streamlit page; the Next.js flow drafts and tracks status by hand.</td></tr>
+      <tr><td>Also not done</td><td>—</td><td>BTC without a Blockchair key · common-input-ownership clustering · role enforcement · temporal ordering · the six defects below · a human-readable case report · dataset setup for a fresh clone.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Feature inventory</h3>
+  <p class="small muted">Real = works · Partial · Mocked · Hardcoded = curated static data · Stub = inert until configured.</p>
+  <div class="tbl"><table class="w-xwide">
+    <thead><tr><th>Feature</th><th>What it does</th><th>Key files</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td>Chain auto-detect</td><td>Regex by address format; EVM defaults to Ethereum with a note</td><td><code>app/graph/chain_detect.py</code>, <code>frontend/src/lib/chainDetect.ts</code></td><td><span class="chip s-done">Real</span> no checksum check</td></tr>
+      <tr><td>Ethereum / Polygon adapter</td><td>Etherscan V2 txlist + tokentx + txlistinternal in parallel</td><td><code>app/api_clients/etherscan.py</code></td><td><span class="chip s-done">Real</span> reads the <em>oldest</em> 2,000 records</td></tr>
+      <tr><td>Tron adapter</td><td>Tronscan native + TRC-20, latest 600 each; harvests tags and risk flags</td><td><code>app/api_clients/tronscan.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Bitcoin adapter</td><td>Blockchair: 20 latest txs, outbound only, follows the largest output</td><td><code>app/api_clients/blockchair.py</code></td><td><span class="chip s-partial">Partial</span> blocked without a key</td></tr>
+      <tr><td>BNB adapter</td><td>NodeReal <code>nr_getAssetTransfers</code>, outbound, native only</td><td><code>app/api_clients/bsctrace.py</code></td><td><span class="chip s-partial">Partial</span> no BEP-20, no inbound</td></tr>
+      <tr><td>Solana adapter</td><td>Helius parsed txs, one page of 100</td><td><code>app/api_clients/solana.py</code></td><td><span class="chip s-partial">Partial</span> no labels anywhere</td></tr>
+      <tr><td>Fetch cache</td><td>In-process 60 s TTL dict, no eviction</td><td><code>app/cache.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Ranked multi-hop trace</td><td>BFS over material branches; terminals ranked by value share, then confidence</td><td><code>app/graph/trace.py</code></td><td><span class="chip s-done">Real</span> defects below</td></tr>
+      <tr><td>Asset-aware following</td><td>Compares decimal units; follows one asset</td><td><code>app/assets.py</code></td><td><span class="chip s-done">Real</span> fake-token steering</td></tr>
+      <tr><td>Deposit-address detector</td><td>Sweep score on the hop before an exchange</td><td><code>app/graph/sweep.py</code></td><td><span class="chip s-done">Real</span> UI/summary overclaim</td></tr>
+      <tr><td>Indian VASP labels</td><td>112 checksum-validated addresses</td><td><code>app/data/indian_vasps.py</code>, <code>.csv</code></td><td><span class="chip s-neutral">Hardcoded</span> curated</td></tr>
+      <tr><td>GraphSense TagPacks</td><td>500k community labels, git-cloned, pickled cache</td><td><code>app/data/tagpacks.py</code></td><td><span class="chip s-done">Real</span> not in git</td></tr>
+      <tr><td>Explorer-tag harvesting</td><td>Turns Tronscan tags into labels, below curated in precedence</td><td><code>app/data/chain_native_labels.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Mixer list</td><td>One address (Tornado donation)</td><td><code>app/data/known_mixers.py</code></td><td><span class="chip s-neutral">Hardcoded</span></td></tr>
+      <tr><td>Illicit / sanctions list</td><td>2 hand entries + 910 OFAC addresses</td><td><code>known_illicit.py</code>, <code>ofac_sanctions.py</code></td><td><span class="chip s-done">Real</span> snapshot</td></tr>
+      <tr><td>Chainalysis oracle</td><td><code>isSanctioned</code> via public RPC, EVM only</td><td><code>app/api_clients/chainalysis.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Chainalysis Screening API</td><td>Designation lookup, all chains</td><td><code>chainalysis.py</code></td><td><span class="chip s-neutral">Stub</span> no key, never saw a 200</td></tr>
+      <tr><td>FIU-IND compliance</td><td>Substring match: 3 registered-after-penalty + 27 flagged names</td><td><code>app/data/fiu_compliance.py</code></td><td><span class="chip s-neutral">Hardcoded</span> missing 15 of 25 wave-2 and 5 of 15 wave-3 names; no Indian registrants</td></tr>
+      <tr><td>Risk engine</td><td>Trail rules + behaviour; the worse wins, basis named</td><td><code>app/graph/risk.py</code></td><td><span class="chip s-done">Real</span> primary path only</td></tr>
+      <tr><td>Typologies</td><td>Funnel, rapid layering, fan-out, peel chain, round amounts</td><td><code>app/graph/typology.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Exposure</td><td>Direct/indirect along candidates; receiving/sending at the seed</td><td><code>app/graph/exposure.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Plain-language summary</td><td>Deterministic template, no LLM</td><td><code>app/graph/summary.py</code></td><td><span class="chip s-done">Real</span> deposit sentence bug</td></tr>
+      <tr><td>INR valuation</td><td>CoinGecko keyless, display only</td><td><code>app/prices.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>s.63 evidence pack</td><td>Canonical JSON + SHA-256 + Part A/B + hash report (zip)</td><td><code>app/evidence/certificate.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>SAHYOG draft + instrument</td><td>Four-way rule → draft JSON</td><td><code>app/sahyog/gateway.py</code></td><td><span class="chip s-partial">Real draft</span> defective routing</td></tr>
+      <tr><td>SAHYOG submission &amp; status</td><td>Mock validator (Streamlit only); manual 5-step status</td><td><code>gateway.py</code>, <code>case_store.py</code></td><td><span class="chip s-mocked">Mocked</span></td></tr>
+      <tr><td>Case management</td><td>Cases, events, tags, NCRP ack, CCTNS FIR</td><td><code>case_store.py</code>, <code>api/main.py</code>, <code>frontend/src/app/cases/*</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>UPI / bank trail</td><td>Hand-entered hops from bank disclosures</td><td><code>case_store.py</code>, <code>UpiTrail.tsx</code></td><td><span class="chip s-done">Real</span> manual by design</td></tr>
+      <tr><td>Watchlist &amp; alerts</td><td>Re-trace; alert on risk worsening or entity change; optional sweep loop</td><td><code>watchlist_store.py</code>, <code>api/main.py</code>, <code>alerts/page.tsx</code></td><td><span class="chip s-done">Real</span> off by default, no push</td></tr>
+      <tr><td>Dashboard</td><td>6 KPI tiles computed in the browser</td><td><code>dashboard/page.tsx</code></td><td><span class="chip s-partial">Partial</span></td></tr>
+      <tr><td>Coverage &amp; Methodology page</td><td>Publishes thresholds, sources, limits</td><td><code>coverage/page.tsx</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Auth</td><td>Login, JWT, guard, sign-out</td><td><code>app/auth.py</code>, <code>AuthGuard.tsx</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Roles</td><td>officer / supervisor / admin stored and shown as titles</td><td><code>case_store.py</code>, <code>AppShell.tsx</code></td><td><span class="chip s-neutral">Stub</span> never enforced</td></tr>
+      <tr><td>Audit log</td><td>Login / trace / certificate / watchlist + case timeline</td><td><code>case_store.py</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Investigation graph</td><td>Cytoscape dagre left-to-right: funders → subject → trace</td><td><code>InvestigationGraph.tsx</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Transactions table + drawer</td><td>Merged edges, INR, filters</td><td><code>TransactionsTable.tsx</code>, <code>DetailDrawer.tsx</code></td><td><span class="chip s-done">Real</span></td></tr>
+      <tr><td>Streamlit UI</td><td>Older UI with hardcoded demo addresses</td><td><code>app/main.py</code></td><td><span class="chip s-neutral">Legacy</span></td></tr>
+      <tr><td>Bridges / swaps / cross-chain</td><td>—</td><td>—</td><td><span class="chip s-missing">Missing</span></td></tr>
+      <tr><td>CIOH / change detection</td><td>—</td><td>—</td><td><span class="chip s-missing">Missing</span></td></tr>
+      <tr><td>Seed or demo data</td><td>None in the DB; officers via a script; no fake cases</td><td>—</td><td><span class="chip s-done">Strength</span> nothing is faked</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>The specific checks you asked for</h3>
+  <h4>Chains and data APIs</h4>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Chain</th><th>API called</th><th>Key</th><th>Paid?</th><th>What is fetched</th><th>Live</th></tr></thead>
+    <tbody>
+      <tr><td>Ethereum</td><td>Etherscan V2</td><td>Required</td><td>Free: 3/s, 100k/day</td><td>Native + ERC-20 + internal, oldest 2,000</td><td><span class="chip s-done">ok</span></td></tr>
+      <tr><td>Polygon</td><td>Etherscan V2 (chainid 137)</td><td>Required</td><td>Free (a selected chain)</td><td>Same</td><td><span class="chip s-done">ok</span></td></tr>
+      <tr><td>Tron</td><td>Tronscan</td><td>Effectively required since Aug 2025</td><td>Free key</td><td>TRX + TRC-20, latest 600 each, with explorer tags</td><td><span class="chip s-done">ok</span></td></tr>
+      <tr><td>BNB Chain</td><td>NodeReal MegaNode</td><td>Required (free: 10M CU/month)</td><td>Free tier</td><td>Native BNB, outbound only</td><td><span class="chip s-done">ok</span></td></tr>
+      <tr><td>Solana</td><td>Helius parsed transactions</td><td>Required (free: 1M credits)</td><td>Free tier (verify plan)</td><td>SOL + SPL, 100 txs</td><td><span class="chip s-done">ok</span></td></tr>
+      <tr><td>Bitcoin</td><td>Blockchair dashboards</td><td>Optional in theory</td><td>Keyless IP blacklisted</td><td>20 txs, outbound only</td><td><span class="chip s-missing">HTTP 430</span></td></tr>
+      <tr><td>Sanctions</td><td>Chainalysis oracle via public RPC; Chainalysis API</td><td>None; the API needs a requested key</td><td>Free</td><td><code>isSanctioned</code> per path address</td><td><span class="chip s-done">oracle</span> <span class="chip s-missing">API</span></td></tr>
+      <tr><td>Prices</td><td>CoinGecko simple/price</td><td>None</td><td>Free (100/min)</td><td>INR rates</td><td><span class="chip s-done">ok</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>How tracing works</h4>
+  <ul>
+    <li><strong>Algorithm:</strong> breadth-first over a frontier of branches from the seed. Each hop:
+      <ol>
+        <li>check each branch head against the mixer list, then the curated/GraphSense labels, then labels harvested this trace;</li>
+        <li>a hit ends the branch as a terminal;</li>
+        <li>otherwise fetch the address, follow one asset (dominant by decimal amount), collapse to one edge per destination, and keep destinations carrying ≥10% of the outflow (always the biggest), at most 3 per parent and 8 alive overall.</li>
+      </ol></li>
+    <li><strong>Limits:</strong> 12 hops by default (API cap 20), 60 address lookups per trace.</li>
+    <li><strong>Stops at:</strong> mixer hit · label hit · the address’s own tag · dead end · hop limit · budget exhausted. The last three are reported.</li>
+    <li><strong>“Nearest exchange”</strong> means the largest share of the money that reached a named entity. Candidates on the same entity are merged; they are sorted by value share, then confidence; candidate #0 is the verdict, with its hop count shown.</li>
+    <li><strong>Deposit address:</strong> the hop before an exchange terminal is scored by the sweep heuristic, using the transactions already fetched.</li>
+    <li><strong>Weaknesses:</strong>
+      <ul>
+        <li>no time ordering;</li>
+        <li>fixed recency windows (Tron latest 600; Ethereum oldest 2,000);</li>
+        <li>labels without a category default to “exchange”;</li>
+        <li>value share uses all-time outflows, not a taint model;</li>
+        <li>fake tokens can steer which asset is followed.</li>
+      </ul></li>
+  </ul>
+
+  <h4>Where labels come from</h4>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Source</th><th>Size</th><th>Confidence recorded</th><th>Used in score?</th></tr></thead>
+    <tbody>
+      <tr><td>Indian VASP CSV</td><td>112 addresses (CoinDCX 97 / WazirX 13 / CoinSwitch 2)</td><td>0.95 / 0.90 / 0.75 by corroboration</td><td><span class="chip s-missing">No</span></td></tr>
+      <tr><td>GraphSense TagPacks</td><td>500,115 (Tron 30)</td><td>a string id, e.g. <code>web_crawl</code></td><td><span class="chip s-missing">No</span></td></tr>
+      <tr><td>Tronscan tags (live)</td><td>whatever the explorer names on fetched transfers</td><td>0.60</td><td><span class="chip s-missing">No</span> (hop formula gives 0.75)</td></tr>
+      <tr><td>OFAC + 2 hand entries</td><td>912</td><td>—</td><td>Risk only</td></tr>
+      <tr><td>Mixers</td><td>1</td><td>—</td><td>Risk + terminal</td></tr>
+      <tr><td>FIU-IND status</td><td>3 registered-after-penalty + 27 flagged</td><td>—</td><td>Risk + routing</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">Two semantic notes on the Indian CSV:</p>
+  <ul class="small muted">
+    <li>“CoinSwitch Binance Deposit 1” and “WazirX Binance Deposit 1” are Binance deposit addresses belonging to those exchanges’ Binance accounts. Labelling them only as the Indian exchange hides that Binance is also a disclosure target.</li>
+    <li>The CoinDCX and WazirX “Gas Supplier” addresses are operational wallets, ideal seeds for a gas-funding heuristic.</li>
+  </ul>
+
+  <div class="two">
+    <div class="panel"><h4>Clustering</h4><p class="small">There is no clustering algorithm: no common-input ownership, no change detection (on BTC the followed “dominant output” is often the change), no cluster expansion from deposit→hot-wallet sweeps. What exists is label pass-through and the per-hop deposit classifier.</p></div>
+    <div class="panel"><h4>Mixers, bridges, swaps</h4><p class="small">Mixers: one curated address, plus GraphSense <code>mixing_service</code> / <code>coinjoin</code> (mostly BTC); the Tornado ETH pools are typed “exchange”. Bridges and swap services: none. The only nod is “swap”/“dex” tags folded into <code>defi</code>.</p></div>
+    <div class="panel"><h4>Confidence and risk</h4><p class="small">Confidence = clamp(0.9 − 0.15 × hops + 0.05 if cluster-definer, 0.3, 0.95), so a single-source label at hop 0 shows 95%. Deposit score is a weighted checklist (0.35 / 0.30 / 0.20 / 0.15), threshold 0.60. Risk runs six ordered trail rules plus five behaviour typologies; the worse wins, the basis is named, and an exchange’s own wallet is not escalated.</p></div>
+    <div class="panel"><h4>Reports</h4><p class="small">The s.63 zip holds a canonical JSON record (no clock, sorted keys), Part A and Part B PDFs following the BSA Schedule with sworn fields left blank, and a hash report with certutil / sha256sum / shasum steps. Missing: a readable case report and a rendered notice letter. The certificate endpoint re-runs the trace, so after the 60 s cache it can differ from the screen.</p></div>
+  </div>
+
+  <h4>SAHYOG mock</h4>
+  <p><code>POST /v1/cases/{id}/sahyog</code> regenerates the draft and resets status to <code>draft</code>. <code>PATCH /v1/cases/{id}/sahyog</code> sets status along <code>draft → ready_for_submission → submitted → acknowledged → fulfilled</code>. <code>POST /v1/trace</code> also returns a <code>sahyog_draft</code>. Draft payload:</p>
+<pre class="code">{ request_type, legal_basis, recommended_instrument{instrument,label,reason}, status, generated_at,
+  chain, seed_address, traced_path, hop_count, matched_entity{type,label,confidence,source},
+  compliance{status,detail}, risk_flag, risk_reason, analyst_note, evidence_summary }</pre>
+  <p class="small muted">Gaps: no request type (disclosure/freeze), no target legal entity, no officer or legal-order fields, no deposit address field (the key identifier), no transaction hashes.</p>
+
+  <div class="two">
+    <div class="panel"><h4>Cases, dashboard, auth, audit</h4><p class="small">Cases hold open/pending/closed status, tags, NCRP ack, CCTNS FIR, a timeline and UPI hops. The dashboard shows six counts over the last 200 cases. Login is real; roles are cosmetic; every officer sees every case. The audit log exists but is not hash-chained. CORS <code>*</code> and the JWT in <code>localStorage</code> are disclosed simplifications.</p></div>
+    <div class="panel"><h4>Hardcoded vs live</h4><p class="small">Every trace, label hit, typology and exposure figure is computed live from explorer data. Hardcoded: the curated datasets, the Coverage page text and the Streamlit demo dropdown. There are no fake cases or seeded results; say so on stage.</p></div>
+  </div>
+
+  <h4>Docs vs reality</h4>
+  <ul class="small">
+    <li>README says “all six chains live” → BTC is blocked without a key.</li>
+    <li>README describes label confidence tiers → they never reach the score.</li>
+    <li>MINDMAP marks 17 of 20 requirements BUILT → 6 of 20 by the strict rule.</li>
+    <li>README says BNB is “not live-tested” → it worked live today.</li>
+    <li><code>create_officer.py</code> promises an authenticated account endpoint → none exists.</li>
+    <li>The team’s PPT outline (14 Sep) still describes Streamlit + SQLite.</li>
+    <li>The demo plan expected <code>0x392704…</code> to reach FixedFloat in 2 hops → it now reaches Kraken 10 in 3.</li>
+  </ul>
+
+  <h3>Confirmed defects, ranked by jury risk</h3>
+  <div class="tbl"><table class="w-xwide">
+    <thead><tr><th>#</th><th>Defect</th><th>Where</th><th>Reproduced by</th><th>Fix (effort)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><strong>Uncategorised labels become “exchange”</strong> (81,815 incl. Tornado pools, “upbit hack”, “defi fraud”): risk none, “disclosure target” badge</td><td><code>trace.py:199,248</code></td><td>Probe</td><td>Reuse <code>categorize()</code> when category is missing: hack/exploit/fraud/phish → illicit, tornado → mixer, bridge → bridge (S)</td></tr>
+      <tr><td>2</td><td><strong>No temporal ordering</strong>: outflows before the inflow are followed</td><td><code>trace.py:256-257</code></td><td>Probe</td><td>Carry <code>arrived_at</code> on each branch; keep outgoing timestamp ≥ arrival (S)</td></tr>
+      <tr><td>3</td><td><strong>Deposit overclaim</strong> in the UI and summary</td><td><code>summary.py:125-130</code>, <code>page.tsx:286-291</code>, <code>Verdict.tsx:367-372</code></td><td>Probe + live demo address</td><td>Gate on <code>is_deposit_address</code>; show “checked — not a deposit pattern” (S)</td></tr>
+      <tr><td>4</td><td><strong>Routing misroutes Indian registered VASPs</strong>; s.94 hard-coded as legal basis</td><td><code>gateway.py:44-52,61-62</code>, <code>fiu_compliance.py:10-23</code></td><td>Probe + live</td><td>Registered set from the Lok Sabha list + penalised-then-registered; request type drives the instrument (S)</td></tr>
+      <tr><td>5</td><td><strong>Confidence ignores label quality</strong></td><td><code>trace.py:129-133</code></td><td>Probe</td><td>Multiply by numeric label confidence (map GraphSense string ids); show the terms (S)</td></tr>
+      <tr><td>6</td><td><strong>Risk reads only the primary path</strong></td><td><code>risk.py:95,132</code></td><td>Probe</td><td>Iterate candidates; escalate at ≥10% value in a risky category (S)</td></tr>
+      <tr><td>7</td><td><strong>Fake-token steering</strong></td><td><code>assets.py:55-64</code></td><td>Probe</td><td>Allow-list canonical stablecoins, e.g. TRC-20 USDT <code>TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t</code> (S)</td></tr>
+      <tr><td>8</td><td>Stale Tornado label “OFAC-sanctioned”</td><td><code>known_mixers.py:9</code></td><td>Live oracle</td><td>“Tornado Cash (mixer), OFAC-delisted 21 Mar 2025” (S)</td></tr>
+      <tr><td>9</td><td>Etherscan reads the oldest 2,000 records</td><td><code>etherscan.py:64</code></td><td>Code</td><td><code>sort=desc</code> or a time window (S)</td></tr>
+      <tr><td>10</td><td>BTC unusable without a key; no inbound data</td><td><code>blockchair.py</code></td><td>Live 430</td><td>Esplora adapter (M)</td></tr>
+      <tr><td>11</td><td>Seed-fetch failures are silent</td><td><code>api/main.py:321-330</code></td><td>Live</td><td>Caveat “history unavailable: provider error” (S)</td></tr>
+      <tr><td>12</td><td>Fresh clone → every trace 502 (datasets gitignored)</td><td><code>.gitignore</code>, README setup, <code>tagpacks.py:42-46</code></td><td>Code</td><td>One setup script (S)</td></tr>
+      <tr><td>13</td><td>Certificate re-traces and can diverge from the screen</td><td><code>api/main.py:411-423</code></td><td>Code</td><td>Certify the result the officer saw (S–M)</td></tr>
+      <tr><td>14</td><td>Roles unenforced; login 500 without a DB</td><td><code>api/main.py</code></td><td>Code / live</td><td>Role check on submit; 503 (S)</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="coverage" aria-labelledby="h-cov">
+  <div class="sec-head"><div class="eyebrow">Step 2</div><h2 id="h-cov">Requirement coverage matrix</h2></div>
+  <p>Every requirement in the problem statement, mapped to code evidence (<code>file:line</code>).</p>
+  <ul class="small">
+    <li><strong>Compulsory</strong> = the “should” items (including each “support identification of” item) and every Expected Solution item. <strong>Optional</strong> = the “may additionally” items.</li>
+    <li><strong>Status:</strong> Done = working logic, exercised · Partial = a material piece absent, or the UI promises more than the logic · Mocked = the external effect is simulated · Missing = none.</li>
+  </ul>
+  <div class="filters" role="group" aria-label="Filter requirements by status">
+    <button type="button" data-filter="all" aria-pressed="true">All <span class="faint">25</span></button>
+    <button type="button" data-filter="done" aria-pressed="false">Done <span class="faint">9</span></button>
+    <button type="button" data-filter="partial" aria-pressed="false">Partial <span class="faint">12</span></button>
+    <button type="button" data-filter="mocked" aria-pressed="false">Mocked <span class="faint">1</span></button>
+    <button type="button" data-filter="missing" aria-pressed="false">Missing <span class="faint">3</span></button>
+  </div>
+
+  <div class="group-label">A · The system should… (compulsory)</div>
+  <div class="reqs">
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A1 · compulsory</div><h4>Automatically analyse suspect wallets reported on the Sahyog Platform</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Manual paste → <code>POST /v1/trace</code> <code>app/api/main.py:382-408</code>; chain auto-detect <code>chain_detect.py:21-37</code>; case auto-saved. None of the 19 operations receives anything from SAHYOG.</dd>
+      <dt>What’s needed</dt><dd>An intake endpoint (<code>POST /v1/sahyog/cases</code>) that auto-runs trace + draft, demonstrated against a mock SAHYOG service.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">A2 · compulsory</div><h4>Trace paths to the nearest exchange / custodial wallet / VASP receiving direct deposits</h4></div><span class="chip s-done">Done*</span></div>
+      <dl><dt>Evidence</dt><dd>Ranked multi-hop search <code>trace.py:152-372</code>, limits at <code>:31-45</code>, label hit at <code>:196-211</code>. <strong>Live:</strong> Tron scam wallet → Binance-Hot 7 in 3.0 s; ETH → Kraken 10 at 3 hops.</dd>
+      <dt>What’s needed</dt><dd>*Correctness defects: no temporal ordering (<code>:256-257</code>), category-less labels typed exchange (<code>:199,248</code>), fake-token steering (<code>assets.py:55-64</code>).</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A3 · compulsory</div><h4>Map deposit addresses and flows across BTC, ETH, Tron, BNB, Solana, Polygon and others</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd><ul>
+        <li>6 chains registered (<code>app/chains.py:12-32</code>).</li>
+        <li>ETH/Polygon: oldest 2,000 records. Tron: latest 600 + 600.</li>
+        <li>BTC: 20 txs, outbound, <strong>HTTP 430</strong> without a key. BNB: outbound native only. Solana: one page, no labels.</li>
+        <li>GraphSense labels: TRX 30, SOL 5, MATIC 4, BNB 0.</li>
+      </ul></dd>
+      <dt>What’s needed</dt><dd>Esplora for BTC; inbound + BEP-20 on BNB; latest/time window on Etherscan; Solana pagination; cross-chain continuation.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A4a · compulsory</div><h4>Identify exchange clusters</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Label lookup only: GraphSense <code>is_cluster_definer</code> (<code>tagpacks.py:78-85</code>) and Indian rows as definers. No CIOH, no hot-wallet co-deposit expansion.</dd>
+      <dt>What’s needed</dt><dd>CIOH on BTC via Esplora inputs; “addresses sweeping into the same hot wallet” on account chains.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">A4b · compulsory</div><h4>Identify hot wallets</h4></div><span class="chip s-done">Done</span></div>
+      <dl><dt>Evidence</dt><dd>Tronscan tags harvested live (<code>chain_native_labels.py:83-110</code>, e.g. “Binance-Hot 7”) plus GraphSense and Indian labels.</dd>
+      <dt>What’s needed</dt><dd>Persist harvested tags with provenance so coverage grows.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">A4c · compulsory</div><h4>Identify deposit wallets</h4></div><span class="chip s-done">Done*</span></div>
+      <dl><dt>Evidence</dt><dd>Sweep heuristic <code>sweep.py:83-182</code>: weights 0.35/0.30/0.20/0.15, threshold 0.60. <strong>Live:</strong> Tron case scored 0.95.</dd>
+      <dt>What’s needed</dt><dd>*The UI and summary claim a deposit address even when <code>is_deposit_address=false</code> (live demo address at 15%). BTC can never qualify: inbound txs are not fetched.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A4d · compulsory</div><h4>Identify mixers / tumblers</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>One curated address (the Tornado donation address, stale “OFAC-sanctioned” label); GraphSense <code>mixing_service</code> (194) and <code>coinjoin</code> (36,550, BTC). The Tornado 0.1/1/10/100 ETH pools have <code>category=None</code>, so they become “exchange”.</dd>
+      <dt>What’s needed</dt><dd>Category-less labels → “unclassified”; a curated Tornado pool list; CoinJoin shape detection; relabel Tornado.</dd></dl></article>
+    <article class="req" data-status="missing"><div class="req-top"><div><div class="req-id">A4e · compulsory</div><h4>Identify DeFi bridges</h4></div><span class="chip s-missing">Missing</span></div>
+      <dl><dt>Evidence</dt><dd>No code. The README says “A trail that crosses a bridge ends there.”</dd>
+      <dt>What’s needed</dt><dd>Bridge registry, a <code>bridge</code> terminal type, destination decoders (THORChain memo; LI.FI / LayerZero lookups). See Step 5.</dd></dl></article>
+    <article class="req" data-status="missing"><div class="req-top"><div><div class="req-id">A4f · compulsory</div><h4>Identify cross-chain swap services</h4></div><span class="chip s-missing">Missing</span></div>
+      <dl><dt>Evidence</dt><dd>Nothing specific. ChangeNOW, SimpleSwap, FixedFloat and Guardarian (FIU-IND, 9 Sep 2026) are named only if a dataset happens to label them; <code>fiu_compliance.py</code> lists only ChangeNOW.</dd>
+      <dt>What’s needed</dt><dd>Tag as <code>swap_service</code>, flag “chain-hop likely”, route to the service’s LE contact plus its FIU-IND status.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A5 · compulsory</div><h4>Integrate Sahyog with intelligence APIs and graph engines</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Intelligence side is real: 5 explorer adapters, the Chainalysis oracle (live, keyless), a NetworkX graph, an OpenAPI surface. The SAHYOG side is a stub, called only by the legacy Streamlit UI.</dd>
+      <dt>What’s needed</dt><dd>SAHYOG adapter + a separate mock service speaking a published contract.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A6 · compulsory</div><h4>Automated tagging and confidence scoring for suspected VASPs</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Tagging is automatic. Confidence = 0.9 − 0.15 × hops (+0.05), ignoring label quality (0.95/0.90/0.75/0.60). Probe: operator-confirmed = single-source = 0.80. Live: a single-source label displayed as 95%.</dd>
+      <dt>What’s needed</dt><dd>Evidence-based score (label reliability × hop decay × deposit confidence + corroboration count), with the breakdown shown.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">A7 · compulsory</div><h4>Generate investigation-ready reports</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>s.63 pack: record, SHA-256, Part A/B, hash report, zip. Live: 4-file pack in 1.7 s. Plain-language summary; draft JSON.</dd>
+      <dt>What’s needed</dt><dd>A readable case report PDF; a rendered, downloadable notice letter; a block-height/time cutoff so the reproducible-hash claim holds.</dd></dl></article>
+    <article class="req" data-status="mocked"><div class="req-top"><div><div class="req-id">A8 · compulsory</div><h4>Route disclosure or freeze requests to the correct VASP through SAHYOG</h4></div><span class="chip s-mocked">Mocked</span></div>
+      <dl><dt>Evidence</dt><dd>Rule-based instrument choice + draft + manual 5-step status; nothing is transmitted. Defects:
+        <ul>
+          <li>CoinDCX/WazirX/CoinSwitch get compliance “unknown”, so “BSA s.63 only”, while <code>legal_basis</code> is hard-coded to s.94.</li>
+          <li>No disclosure/freeze split; BNSS s.106 absent despite the 2026 High Court split.</li>
+          <li>Offshore flagged exchanges get “PMLA s.5 (ED route)” even for a KYC request.</li>
+        </ul></dd>
+      <dt>What’s needed</dt><dd>A VASP directory; request type drives the instrument; a state-aware freeze note; a mock SAHYOG submission with callbacks.</dd></dl></article>
+  </div>
+
+  <div class="group-label">B · Expected solution (compulsory)</div>
+  <div class="reqs">
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">B14 · compulsory</div><h4>Automated identification of the nearest VASP for unknown wallets</h4></div><span class="chip s-done">Done*</span></div>
+      <dl><dt>Evidence</dt><dd>As A2; “unattributed ≠ clean” semantics at <code>risk.py:179-195</code> and <code>summary.py:53-59</code>.</dd><dt>What’s needed</dt><dd>The A2 fixes.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">B15 · compulsory</div><h4>API-driven tracing and attribution</h4></div><span class="chip s-done">Done</span></div>
+      <dl><dt>Evidence</dt><dd>FastAPI, 19 operations on 15 paths (listed live); JWT bearer auth.</dd><dt>What’s needed</dt><dd>Version the contract; publish example payloads.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">B16 · compulsory</div><h4>Multi-chain analysis and visualisation</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>6 adapters; Cytoscape + dagre graph (<code>InvestigationGraph.tsx:216-219</code>); transactions table; exposure wheels.</dd><dt>What’s needed</dt><dd>Depth is uneven by chain; no cross-chain view.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">B17 · compulsory</div><h4>Real-time investigative intelligence</h4></div><span class="chip s-done">Done</span></div>
+      <dl><dt>Evidence</dt><dd>Live explorer calls per trace, nothing pre-indexed; measured 1.2–34.3 s. The monitor is off by default.</dd><dt>What’s needed</dt><dd>Optional push alerts.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">B18 · compulsory</div><h4>Risk classification of wallets and transaction flows</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Trail rules, behaviour combination, 5 typologies, exposure over candidates. Defects: primary path only (40% to a mixer → none); “upbit hack” / “defi fraud” labels → typed exchange → none.</dd><dt>What’s needed</dt><dd>Value-weighted risk over all candidates; keyword mapping for category-less labels; a chain-hop flag.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">B19 · compulsory</div><h4>LEA dashboard with case-based analytics and reporting</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>6 KPI tiles over the last 200 cases; case list with filters; case detail with status, NCRP/CCTNS, SAHYOG pipeline, UPI trail, timeline.</dd><dt>What’s needed</dt><dd>Trends, per-unit views, cross-case linking, export, enforced roles.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">B20 · compulsory</div><h4>Scalable architecture for large-volume analysis</h4></div><span class="chip s-partial">Partial</span></div>
+      <dl><dt>Evidence</dt><dd>Postgres pool (max 10); in-process 60 s cache; parallel fetch reverted due to rate limits; 60-lookup budget; single process.</dd><dt>What’s needed</dt><dd>Shared rate limiter + persistent tx cache now; queue, workers and indexers on the slide.</dd></dl></article>
+  </div>
+
+  <div class="group-label">C · May additionally support (optional)</div>
+  <div class="reqs">
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">O1 · optional</div><h4>Visualisation of fund movement</h4></div><span class="chip s-done">Done</span></div><dl><dt>Evidence</dt><dd>Graph, transactions table, drawer, exposure wheels.</dd><dt>What’s needed</dt><dd>Bridge-node styling once bridges exist.</dd></dl></article>
+    <article class="req" data-status="missing"><div class="req-top"><div><div class="req-id">O2 · optional</div><h4>Cross-chain transaction mapping</h4></div><span class="chip s-missing">Missing</span></div><dl><dt>Evidence</dt><dd>One chain per trace.</dd><dt>What’s needed</dt><dd>Bridge terminal → decoded destination → “continue trace on chain Y”.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">O3 · optional</div><h4>Risk scoring</h4></div><span class="chip s-done">Done*</span></div><dl><dt>Evidence</dt><dd><code>app/graph/risk.py</code>.</dd><dt>What’s needed</dt><dd>As B18.</dd></dl></article>
+    <article class="req" data-status="done"><div class="req-top"><div><div class="req-id">O4 · optional</div><h4>Laundering typologies</h4></div><span class="chip s-done">Done</span></div><dl><dt>Evidence</dt><dd>5 detectors with stated thresholds, published on the Coverage page.</dd><dt>What’s needed</dt><dd>Chain-hopping, mixer→exchange and address-poisoning detectors.</dd></dl></article>
+    <article class="req" data-status="partial"><div class="req-top"><div><div class="req-id">O5 · optional</div><h4>Alerting for high-risk wallets (ransomware, darknet, TF, fraud)</h4></div><span class="chip s-partial">Partial</span></div><dl><dt>Evidence</dt><dd>Watchlist alerts on risk worsening or entity change; manual, cron or in-process sweeps; off by default.</dd><dt>What’s needed</dt><dd>Push channel, category feeds, a “new transfer at a VASP” trigger.</dd></dl></article>
+  </div>
+
+  <h3>Cross-cutting items (not scored)</h3>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Item</th><th>Status</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Officer auth &amp; roles</td><td><span class="chip s-partial">Partial</span></td><td>PBKDF2 200k, HS256 12 h, JWT in localStorage; roles stored and shown, never enforced.</td></tr>
+      <tr><td>Audit logging</td><td><span class="chip s-done">Done</span></td><td>Login, trace, certificate, watchlist + case timeline; not hash-chained.</td></tr>
+      <tr><td>Evidence integrity</td><td><span class="chip s-done">Done</span></td><td>Canonical JSON + SHA-256, no clock; add a block/time cutoff and raw-response hashes.</td></tr>
+      <tr><td>Reproducible setup</td><td><span class="chip s-partial">Partial</span></td><td>Datasets are gitignored and absent from setup; a fresh clone makes every trace 502.</td></tr>
+      <tr><td>Login when the DB is down</td><td><span class="chip s-missing">Defect</span></td><td>Returns 500 instead of 503.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Scorecard</h3>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th></th><th>Done</th><th>Partial</th><th>Mocked</th><th>Missing</th><th>Total</th></tr></thead>
+    <tbody>
+      <tr><td>Compulsory</td><td class="num">6</td><td class="num">11</td><td class="num">1</td><td class="num">2</td><td class="num"><strong>20</strong></td></tr>
+      <tr><td>Optional</td><td class="num">3</td><td class="num">1</td><td class="num">0</td><td class="num">1</td><td class="num">5</td></tr>
+    </tbody>
+  </table></div>
+  <ul>
+    <li>Compulsory, strict (Done only): <strong>30%</strong>. Weighted (Done 1, Partial 0.5, Mocked/Missing 0): <strong>57.5%</strong>.</li>
+    <li>The team’s own table marks 17 of 20 BUILT. The gap is the strict rule: a feature isn’t Done when a reproduced defect undermines the PS wording.</li>
+  </ul>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Fix</th><th>Rows affected</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr><td>Category-less labels, temporal filter, token allow-list, deposit overclaim, label-aware confidence, all-candidate risk</td><td>A2, A4c, A4d, A6, B14, B18</td><td>S (1–2 days)</td></tr>
+      <tr><td>VASP directory + request-type routing + mock SAHYOG with intake</td><td>A1, A5, A8</td><td>M (3–4 days)</td></tr>
+      <tr><td>Bridge/swap registry + 2–3 decoders + continue on chain Y</td><td>A4e, A4f, O2, B16</td><td>M (3 days)</td></tr>
+      <tr><td>Esplora + CIOH for BTC</td><td>A3, A4a</td><td>M (2 days)</td></tr>
+    </tbody>
+  </table></div>
+  <p>Together these would take the weighted compulsory score to roughly <strong>80–85%</strong>.</p>
+</section>
+
+<section id="research" aria-labelledby="h-res">
+  <div class="sec-head"><div class="eyebrow">Step 3</div><h2 id="h-res">Web research, with sources</h2></div>
+  <p>Every claim carries an evidence tag:</p>
+  <ul class="small">
+    <li><span class="e e-F">F</span> fetched and read this session</li>
+    <li><span class="e e-Q">Q</span> confirmed from search results</li>
+    <li><span class="e e-T">T</span> team research notes (14 Sep 2026)</li>
+    <li><span class="e e-L">L</span> measured live on this repo</li>
+    <li><span class="e e-U">U</span> unverified lead: do not cite</li>
+    <li><span class="e e-I">I</span> inference or our design</li>
+  </ul>
+  <div class="note warn">
+    <p><strong>Research limits.</strong></p>
+    <ul>
+      <li>The session’s web-search budget ran out.</li>
+      <li>Five of six parallel research agents were blocked by auto mode’s safety check; the sixth verified five sources before it was blocked too.</li>
+      <li>Items tagged <span class="e e-F">F</span> were fetched directly from the main session.</li>
+      <li>Items tagged <span class="e e-U">U</span> must be checked before they go on a slide. Re-running the agents outside auto mode would close the gaps.</li>
+    </ul>
+  </div>
+
+  <h3>A · SAHYOG</h3>
+  <ul>
+    <li><span class="e e-F">F</span> <strong>Official purpose</strong> (<a href="https://sahyog.mha.gov.in/">sahyog.mha.gov.in</a>): <em>“To automate the process of sending notices to intermediaries by the Appropriate Government or its agency under IT Act, 2000 to facilitate the removal or disabling of access to any information, data or communication link being used to commit an unlawful act.”</em> It brings “all Authorized Agencies of the country and all the intermediaries on one platform”. No mention of crypto, VASPs, data requests or an API.</li>
+    <li><span class="e e-F">F</span> <strong>Karnataka HC, <em>X Corp v. Union of India</em></strong>, 24 Sep 2025, Justice M. Nagaprasanna (<a href="https://indiankanoon.org/doc/7614885/">indiankanoon 7614885</a>):
+      <ul>
+        <li>Legal basis in issue: IT Act s.79(3)(b), IT Rules 2021 Rule 3(1)(d), and MeitY OM 31.10.2023 (No. 1(4)/2020-CLES-1) with a model takedown-notice format.</li>
+        <li>28+ issuing authorities: State/UT police and central ministries.</li>
+        <li><strong>Takedown only</strong>; no data-request function mentioned.</li>
+        <li><span class="e e-U">U</span> The outcome (widely reported as a dismissal) was not in the fetched text.</li>
+      </ul></li>
+    <li><span class="e e-F">F</span> <strong>NCRP</strong> (<a href="https://cybercrime.gov.in/">cybercrime.gov.in</a>) has a Financial Fraud category, 1930, and a <strong>Suspect Repository</strong> of “mobile numbers, e-mail Ids, account numbers, URLs and other identifiers”, but no wallet addresses. <span class="e e-I">I</span> That is an opening for this tool.</li>
+    <li><span class="e e-U">U</span> The Bitget June 2025 release said to report 45+ exchanges onboarded for BNSS s.94 (cited in a code comment) could not be located. Keep it off slides.</li>
+    <li><span class="e e-I">I</span> <strong>How to pitch it:</strong> “Public SAHYOG documentation describes takedown notices under s.79(3)(b); per the problem statement, disclosure requests to VASPs also flow through it. We built to a proposed contract that I4C can adopt.”</li>
+  </ul>
+  <h4>Proposed SAHYOG ↔ VASP-Trace contract <span class="e e-I">I</span></h4>
+  <ul class="small">
+    <li><strong>Actors:</strong> the authorised officer initiates; SAHYOG routes; the VASP responds; VASP-Trace drafts, receives callbacks and audits, and never auto-submits.</li>
+    <li><strong>Hub endpoints:</strong> <code>GET /v1/intermediaries?category=VASP</code> · <code>POST /v1/vasp-requests</code> (idempotent, 202 + ref) · <code>GET /v1/vasp-requests/{ref}</code>.</li>
+    <li><strong>Tool endpoints:</strong> <code>POST /v1/sahyog/events</code> (signed callbacks) · <code>POST /v1/sahyog/cases</code> (complaint intake).</li>
+    <li><strong>Request types:</strong> DISCLOSURE, FREEZE, RELEASE, PRESERVE.</li>
+    <li><strong>Payload:</strong> case (NCRP ack, FIR, station, district, state); agency and officer; legal basis <em>picked by the officer</em>; target intermediary; subjects (chain, asset, address, role, tx hashes, amounts, attribution); data requested (KYC, IP/device, deposits/withdrawals, linked bank/UPI); evidence (trace id, block cutoff, tool version, s.63 bundle SHA-256).</li>
+    <li><strong>Security:</strong> mutual TLS with certificate-bound tokens; officer JWS over canonical JSON (DSC/eSign); OIDC identity; replay protection; JWE-encrypted responses.</li>
+    <li><strong>Audit:</strong> a hash-chained log with daily signed head; reads and exports logged too.</li>
+  </ul>
+
+  <h3>B · The Indian VASP landscape</h3>
+  <ul>
+    <li><span class="e e-Q">Q</span><span class="e e-T">T</span> <strong>S.O. 1072(E), 7 Mar 2023</strong> makes five VDA activities PMLA reporting entities: VDA↔fiat, VDA↔VDA, transfer, safekeeping, issuer financial services (<a href="https://www.legal500.com/developments/thought-leadership/virtual-digital-assets-as-reporting-entity-under-pmla-regulation-and-way-forward/">Legal500</a>, <a href="https://www.azbpartners.com/bank/notification-under-section-2-of-pmla/">AZB</a>).</li>
+    <li><span class="e e-Q">Q</span><span class="e e-T">T</span> <strong>FIU-IND guidelines, 8 Jan 2026:</strong> unhosted-wallet transfers are high risk; Travel Rule data must travel with transfers; CERT-In audits (<a href="https://tsaaro.com/blogs/india-s-2026-aml-cft-guidelines-for-virtual-digital-assets-what-changed">Tsaaro</a>, <a href="https://www.zigram.tech/article/fiu-ind-aml-cft-guidelines-2026/">Zigram</a>).</li>
+    <li><span class="e e-F">F</span> <strong>Lok Sabha, 4 Dec 2023:</strong> 28 VDA SPs registered, naming Neblio Technologies (CoinDCX), Zanmai Labs (WazirX), Bitcipher Labs (CoinSwitch), Nextgendev Solutions (CoinSwitchX) and Awlencan Innovations (ZebPay) (<a href="https://inc42.com/buzz/coindcx-wazirx-28-vda-service-providers-registered-fiu-govt/">Inc42</a>). This is the only official name-trail for Indian registrants found.</li>
+    <li><span class="e e-F">F</span> <strong>~1 Oct 2025:</strong> “So far, 50 VDA SPs have registered with FIU IND” (<a href="https://coingeek.com/indian-regulator-issues-notices-to-25-offshore-crypto-platforms/">CoinGeek</a>). Other counts (49, 54) are unreconciled.</li>
+    <li><span class="e e-T">T</span><span class="e e-Q">Q</span> <strong>Registered after penalty:</strong> Binance ₹18.82 cr (19 Jun 2024), KuCoin ₹34.5 lakh, Bybit ₹9.27 cr (31 Jan 2025).</li>
+    <li><span class="e e-Q">Q</span> <strong>Tax:</strong> 30% + 1% TDS (s.194S). Esya Centre estimate: over ₹3.5 lakh crore traded offshore Jul 2022–Oct 2023, a share above 90% (<a href="https://www.koinx.com/stats/india-tds-on-crypto-statistics">KoinX</a>).</li>
+    <li><span class="e e-Q">Q</span> <strong>Hacks:</strong> WazirX, 18 Jul 2024, ~US$235M, Lazarus (<a href="https://www.businesstoday.in/technology/news/story/north-koreas-lazarus-group-behind-235-million-wazirx-hack-confirms-joint-statement-by-us-south-korea-japan-460804-2025-01-14">BusinessToday</a>); CoinDCX, 19 Jul 2025, ~US$44M from an internal wallet (<a href="https://techcrunch.com/2025/07/21/indian-crypto-exchange-coindcx-confirms-44-million-stolen-during-hack">TechCrunch</a>).</li>
+  </ul>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>FIU-IND wave</th><th>Date</th><th>Entities</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>1 · show-cause</td><td class="num">28 Dec 2023</td><td>Binance, KuCoin, Kraken, Huobi, Gate.io, Bittrex, Bitstamp, MEXC Global, Bitfinex</td><td><span class="e e-Q">Q</span> <a href="https://www.pib.gov.in/PressReleasePage.aspx?PRID=1991372">PIB 1991372</a></td></tr>
+      <tr><td>2 · non-compliance</td><td class="num">~1 Oct 2025</td><td>AscendEx, BC.Game, BingX, BitMEX, Bitrue, BTCC, BTSE, CEX.IO, Changelly, CoinCola, CoinEx, CoinW, Huione, HitBTC, LBank, LCX, LocalCoinSwap, Paxful, Phemex, Poloniex, PrimeXBT, ProBit Global, Remitano, YouHodler, ZooMex</td><td><span class="e e-F">F</span> <a href="https://coingeek.com/indian-regulator-issues-notices-to-25-offshore-crypto-platforms/">CoinGeek</a></td></tr>
+      <tr><td>3 · non-compliance</td><td class="num">9 Sep 2026</td><td>Weex, Blofin, Rezorex, Bitunix, DigiFinex, Toobit, XT.com, Latoken, WOO X, Pionex, <strong>ChangeNOW, SimpleSwap, FixedFloat</strong>, WhiteBIT, <strong>Guardarian</strong></td><td><span class="e e-Q">Q</span> <a href="https://www.business-standard.com/markets/cryptocurrency/fiu-issues-notice-to-15-crypto-service-providers-asks-to-take-down-urls-126090900585_1.html">Business Standard</a>, <a href="https://www.cryptotimes.io/2026/09/09/indias-fiu-orders-takedown-of-15-offshore-crypto-apps-over-aml-non-compliance/">CryptoTimes</a></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">Wave 3 names four instant-swap services: the PS’s “cross-chain swap services”.</p>
+
+  <h4>How LEAs get KYC and freezes today</h4>
+  <ul>
+    <li><span class="e e-Q">Q</span> <strong>Exchange LE portals.</strong> Binance runs a Law Enforcement Request System via Kodex; it needs “a valid court order … or police orders/warrants” and reviews access in about 3 business days (<a href="https://www.binance.com/en/support/law-enforcement">binance.com</a>). Coinbase and Crypto.com also use Kodex. <span class="e e-U">U</span> No public LE channel was found for CoinDCX; the other Indian exchanges were not checked.</li>
+    <li><span class="e e-F">F</span> <strong>Tether:</strong> its terms allow freezing tokens and sharing information with LEAs; the separate LE Requests Policy page was not machine-readable (<a href="https://tether.to/en/legal/">tether.to/legal</a>).</li>
+    <li><span class="e e-F">F</span> <strong>Freezing under the BNSS: the High Courts are split in 2026.</strong>
+      <ul>
+        <li><strong>Andhra Pradesh HC</strong>, <em>Blue Sea Ventures</em>, 31 Mar 2026: s.106 “does not confer any authority to attach or debit-freeze bank accounts”; attachment only by a Magistrate’s order; s.106/s.94 freeze notices “manifestly without jurisdiction” (<a href="https://indiankanoon.org/doc/195992643/">doc</a>).</li>
+        <li><strong>Karnataka HC</strong>, <em>JAR Gold Retail</em>, 10 Aug 2026: a debit freeze “is a species of seizure … under Section 106”, reported forthwith to the Magistrate; s.107 needs an application and a 14-day show-cause notice (<a href="https://indiankanoon.org/doc/14622554/">doc</a>).</li>
+        <li><strong>Bombay HC</strong>, <em>Smartpaddle</em>, 30 Jul 2026: s.94 (document production) can’t freeze; ss.106–107 can; a wrong section doesn’t invalidate the order (<a href="https://indiankanoon.org/doc/22370397/">doc</a>).</li>
+        <li><strong>Delhi HC</strong>, <em>Pay 10 Services</em>, 26 Feb 2026: the question was left open; the police relied on NCRP alerts (<a href="https://indiankanoon.org/doc/11567432/">doc</a>).</li>
+      </ul></li>
+    <li><span class="e e-I">I</span> <strong>Takeaway:</strong> s.94 is for disclosure; a freeze needs s.106 or s.107 depending on the state; the tool drafts both and the officer chooses.</li>
+    <li><span class="e e-U">U</span> <strong>Still to verify:</strong> BNSS s.112 (letter of request abroad); PMLA s.5/17/50; IT Rules 3(1)(j); the CERT-In 2022 five-year VASP record direction; MHA MLAT guidelines.</li>
+  </ul>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Target</th><th>Disclosure</th><th>Freeze</th><th>Channel</th><th>Basis</th></tr></thead>
+    <tbody>
+      <tr><td>FIU-registered Indian VASP (CoinDCX, WazirX, CoinSwitch, ZebPay)</td><td>BNSS s.94 notice</td><td>s.106 (+ report to Magistrate) or s.107 (Magistrate order), state-dependent</td><td>Exchange nodal officer; SAHYOG per the PS</td><td><span class="e e-F">F</span> Lok Sabha list; HC split</td></tr>
+      <tr><td>Registered offshore (Binance, KuCoin, Bybit)</td><td>s.94 via the LE portal (Kodex)</td><td>Exchange LE process + order</td><td>Kodex portal</td><td><span class="e e-Q">Q</span> Binance LERS</td></tr>
+      <tr><td>Unregistered / flagged offshore (waves 1–3)</td><td>LE portal if any, else MLAT / letter of request <span class="e e-U">U</span></td><td>Same + FIU-IND intimation</td><td>Portal or MLAT</td><td><span class="e e-I">I</span></td></tr>
+      <tr><td>Stablecoin issuer (USDT / USDC)</td><td>—</td><td>Contract-level blacklist</td><td>Issuer LE policy</td><td><span class="e e-F">F</span> Tether terms; USDT contract</td></tr>
+      <tr><td>DeFi / bridge / unhosted</td><td>none</td><td>none</td><td>Follow to the next custodial hop</td><td><span class="e e-I">I</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>C · Crypto-crime patterns in India</h3>
+  <ul>
+    <li><span class="e e-F">F</span> India ranks <strong>#1</strong> in the Chainalysis 2025 Global Crypto Adoption Index (2 Sep 2025) (<a href="https://www.chainalysis.com/blog/2025-global-crypto-adoption-index/">Chainalysis</a>).</li>
+    <li><span class="e e-F">F</span> FinCEN found Cambodia-based <strong>Huione Group</strong> a primary money-laundering concern in May 2025: “over US$4 billion … August 2021 to January 2025”. Elliptic called Huione Guarantee “the largest criminal marketplace of all time” (over US$27B). Huione is also in FIU-IND wave 2 (<a href="https://en.wikipedia.org/wiki/Huione_Group">Wikipedia, citing FinCEN/Reuters/Elliptic</a>).</li>
+    <li><span class="e e-L">L</span> The real case wallet in the repo: 15 funders paid USDT-TRC20 in, everything went to Binance-Hot 7, and the sender scored 0.95 as a deposit address. That is the collection wallet → deposit address → exchange pattern, from one case.</li>
+    <li><span class="e e-Q">Q</span> Binance assisted Indian authorities in a ₹226 crore crypto network investigation linked to alleged terror financing.</li>
+    <li><span class="e e-U">U</span> <strong>Leads to verify:</strong> UNODC 2024 (USDT on Tron as a preferred rail) · the T3 Financial Crime Unit · CBI Operation Chakra · ED USDT cases · digital-arrest statistics · the P2P mule path.</li>
+  </ul>
+
+  <h3>D · Existing tools and the gap</h3>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Tool</th><th>Confirmed this session</th><th>To verify</th></tr></thead>
+    <tbody>
+      <tr><td>Chainalysis</td><td><span class="e e-F">F</span> Free, keyless sanctions oracle; other products licensed</td><td>Pricing, Indian contracts</td></tr>
+      <tr><td>TRM Labs</td><td><span class="e e-U">U</span> T3 FCU partner</td><td>Everything</td></tr>
+      <tr><td>Elliptic</td><td><span class="e e-F">F</span> Source for the Huione findings</td><td>Pricing, India usage</td></tr>
+      <tr><td>Crystal Intelligence</td><td><span class="e e-Q">Q</span> Published a WazirX hack analysis</td><td>Pricing, India usage</td></tr>
+      <tr><td>Merkle Science, Arkham, MetaSleuth, MistTrack, Breadcrumbs</td><td>—</td><td>Everything</td></tr>
+      <tr><td>CipherTrace</td><td><span class="e e-U">U</span> Reportedly wound down</td><td>Status</td></tr>
+      <tr><td>GraphSense / Iknaio</td><td><span class="e e-T">T</span><span class="e e-L">L</span> MIT TagPacks: 500,115 labels, 96.6% BTC; Tron 30</td><td>—</td></tr>
+      <tr><td>Exchange LE portals</td><td><span class="e e-Q">Q</span> Kodex for Binance, Coinbase, Crypto.com</td><td>Indian exchanges</td></tr>
+    </tbody>
+  </table></div>
+  <p><strong>Gaps an indigenous tool fills:</strong></p>
+  <ol>
+    <li>Indian-VASP labels: GraphSense carries zero addresses for WazirX, CoinDCX and ZebPay, and only 30 Tron labels.</li>
+    <li>Indian legal output: the BSA s.63 pack, and BNSS routing aware of the 2026 High Court split.</li>
+    <li>The fiat leg: UPI/bank hops.</li>
+    <li>Data sovereignty and cost.</li>
+    <li>Wallet identifiers across complaints, which the NCRP Suspect Repository lacks.</li>
+  </ol>
+
+  <h3>E · Technical methods</h3>
+  <ul>
+    <li><span class="e e-T">T</span> <strong>Common-input ownership:</strong> Meiklejohn et al., IMC 2013 (<a href="https://cseweb.ucsd.edu/~smeiklejohn/files/imc13.pdf">PDF</a>). Fails under CoinJoin, PayJoin and batching.</li>
+    <li><span class="e e-F">F</span> <strong>Change heuristics</strong> (<a href="https://citp.github.io/BlockSci/reference/heuristics/change.html">BlockSci docs</a>): address reuse, address type, optimal change, power of ten, fresh address, locktime and peeling-chain rules.</li>
+    <li><span class="e e-F">F</span> <strong>Möser &amp; Narayanan</strong>, <em>Resurrecting Address Clustering in Bitcoin</em>, FC 2022 (<a href="https://arxiv.org/abs/2107.05749">arXiv 2107.05749</a>): a low-false-positive change predictor, and cluster collapse. This fixes a citation mix-up.</li>
+    <li><span class="e e-F">F</span> <strong>Kappos et al.</strong>, <em>How to Peel a Million</em>, USENIX Security 2022 (<a href="https://www.usenix.org/conference/usenixsecurity22/presentation/kappos">USENIX</a>): a peel-chain heuristic used to validate and expand clusters.</li>
+    <li><span class="e e-T">T</span> <strong>Victor</strong>, <em>Address Clustering Heuristics for Ethereum</em>, FC 2020 (<a href="https://www.ifca.ai/fc20/preproceedings/31.pdf">PDF</a>): deposit-address reuse clustered 17.9% of active addresses.</li>
+    <li><span class="e e-F">F</span> <strong>Tron activation</strong> (<a href="https://developers.tron.network/docs/account">TRON docs</a>): a new address is activated by TRX/TRC-10 or <code>createaccount</code>; the sender pays 1 TRX; TRC-20 doesn’t activate. <span class="e e-I">I</span> A recurring activator or fee-funder across addresses sweeping to one hot wallet is a cheap deposit-cluster signal.</li>
+    <li><span class="e e-F">F</span> <strong>Tornado Cash</strong> was delisted by Treasury on 21 Mar 2025 (<a href="https://home.treasury.gov/news/press-releases/sb0057">Treasury</a>). Wang et al. 2022 shrink claimed anonymity sets by about 27% on ETH and 46% on BSC (<a href="https://arxiv.org/abs/2201.09035">arXiv 2201.09035</a>).</li>
+  </ul>
+  <h4>Bridges and swaps: where the destination is encoded</h4>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Service</th><th>Destination encoded in</th><th>Free resolver</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>THORChain</td><td>Memo <code>SWAP:ASSET:DESTADDR:LIM…</code>, short <code>=</code>; BTC OP_RETURN (80 bytes), EVM router deposit</td><td>Midgard <code>midgard.thorchain.network/v2/doc</code>; THORNode</td><td><span class="e e-F">F</span> <a href="https://dev.thorchain.org/concepts/memos.html">memos</a></td></tr>
+      <tr><td>LI.FI (aggregator)</td><td>—</td><td><code>GET li.quest/v1/status?txHash=</code> → receiving tx, chainId, toAddress (free key)</td><td><span class="e e-F">F</span> <a href="https://docs.li.fi/api-reference/check-the-status-of-a-cross-chain-transfer">docs</a></td></tr>
+      <tr><td>LayerZero / Stargate</td><td>srcEid / dstEid</td><td><code>scan.layerzero-api.com/v1/messages/tx/{tx}</code></td><td><span class="e e-F">F</span> <a href="https://docs.layerzero.network/v2/tools/layerzeroscan/api">docs</a></td></tr>
+      <tr><td>Across</td><td>Deposit (dest chain, recipient)</td><td><code>app.across.to/api/deposit/status</code>, Bearer token + integratorId</td><td><span class="e e-F">F</span> <a href="https://docs.across.to/reference/api-reference">docs</a></td></tr>
+      <tr><td>Wormhole</td><td>VAA</td><td>Wormholescan API (details not extracted)</td><td><span class="e e-F">F</span><span class="e e-U">U</span></td></tr>
+      <tr><td>Allbridge Core</td><td>—</td><td>Supports Tron USDT/USDC/USDe; no public status API</td><td><span class="e e-F">F</span> <a href="https://docs-core.allbridge.io/">docs</a></td></tr>
+      <tr><td>DefiLlama bridges-server</td><td colspan="2">Contract addresses per chain in <code>src/data/bridgeNetworkData.ts</code>; licence not shown</td><td><span class="e e-F">F</span> <a href="https://github.com/DefiLlama/bridges-server">GitHub</a></td></tr>
+    </tbody>
+  </table></div>
+  <h4>Typologies</h4>
+  <p class="small muted">FATF’s 2020 red flags are the reference (the site returned 403).</p>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Typology</th><th>Rule</th><th>In repo</th></tr></thead>
+    <tbody>
+      <tr><td>Peel chain</td><td>≥3–4 hops each forwarding 70–99% to a fresh address</td><td><span class="chip s-done">yes</span></td></tr>
+      <tr><td>Fan-out / smurfing</td><td>≥8 destinations, near-equal amounts, within 7 days</td><td><span class="chip s-done">yes</span></td></tr>
+      <tr><td>Collection wallet</td><td>≥5 funders, ≤3 destinations</td><td><span class="chip s-done">yes</span></td></tr>
+      <tr><td>Rapid layering</td><td>Median hold ≤1 h, ≥3 sweeps, ≥80% forwarded</td><td><span class="chip s-done">yes</span></td></tr>
+      <tr><td>Round amounts</td><td>The same multiple of 100, ≥4 times</td><td><span class="chip s-done">yes</span></td></tr>
+      <tr><td>Chain-hopping</td><td>Path reaches a bridge or swap service</td><td><span class="chip s-missing">no</span></td></tr>
+      <tr><td>Mixer then exchange</td><td>Mixer within N hops of an exchange</td><td><span class="chip s-missing">no</span></td></tr>
+      <tr><td>Address poisoning</td><td>Look-alike zero-value or fake-token inflow</td><td><span class="chip s-missing">no</span></td></tr>
+      <tr><td>Round-tripping</td><td>Funds return to the origin within ≤5 hops</td><td><span class="chip s-missing">no</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>F · Free and low-cost data sources</h3>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Chain</th><th>Provider</th><th>Free tier</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>ETH / Polygon</td><td>Etherscan V2</td><td>3 calls/s, 100k/day, selected chains</td><td><span class="e e-F">F</span> <a href="https://docs.etherscan.io/resources/rate-limits">rate limits</a></td></tr>
+      <tr><td>BNB</td><td>Etherscan V2</td><td>Paid-only since 22 Nov 2025</td><td><span class="e e-T">T</span></td></tr>
+      <tr><td>BNB</td><td>NodeReal MegaNode</td><td>10M CU/month, 150 CUPS; Enhanced API availability on Free not stated</td><td><span class="e e-F">F</span> <a href="https://nodereal.io/pricing">pricing</a></td></tr>
+      <tr><td>Tron</td><td>TronGrid</td><td>Limits by key, account, IP, endpoint; TRC-20 at <code>/v1/accounts/{a}/transactions/trc20</code></td><td><span class="e e-F">F</span> <a href="https://developers.tron.network/docs/trongrid">docs</a></td></tr>
+      <tr><td>Tron</td><td>Tronscan</td><td>3 req/s unauthenticated; no guaranteed QPS without a key since 31 Aug 2025</td><td><span class="e e-T">T</span></td></tr>
+      <tr><td>Solana</td><td>Helius</td><td>1M credits/month, 10 RPC/s; “Preprocessed Transactions” listed as not free, yet the team’s key returned parsed history</td><td><span class="e e-F">F</span> <a href="https://www.helius.dev/pricing">pricing</a></td></tr>
+      <tr><td>BTC</td><td>Blockstream Esplora</td><td>25 txs per page; inputs and outputs (enables CIOH); keyless HTTP 200 from the team’s machine</td><td><span class="e e-F">F</span> <a href="https://github.com/Blockstream/esplora/blob/master/API.md">API.md</a></td></tr>
+      <tr><td>BTC</td><td>Blockchair</td><td>Keyless IP blacklisted (HTTP 430)</td><td><span class="e e-L">L</span></td></tr>
+      <tr><td>Prices</td><td>CoinGecko Demo</td><td>100 calls/min, 10k/month</td><td><span class="e e-F">F</span> <a href="https://www.coingecko.com/en/api/pricing">pricing</a></td></tr>
+    </tbody>
+  </table></div>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Dataset</th><th>Covers</th><th>Evidence</th></tr></thead>
+    <tbody>
+      <tr><td>GraphSense TagPacks</td><td>500,115 labels; 81,815 without a category</td><td><span class="e e-L">L</span> MIT</td></tr>
+      <tr><td>eth-labels</td><td>169k+ EVM labels copied from Etherscan (check Etherscan’s ToS)</td><td><span class="e e-F">F</span> <a href="https://github.com/dawsbot/eth-labels">GitHub</a> MIT</td></tr>
+      <tr><td>Forta labelled-datasets</td><td>Malicious contracts and phishing EOAs, ETH + Optimism</td><td><span class="e e-F">F</span> <a href="https://github.com/forta-network/labelled-datasets">GitHub</a> MIT</td></tr>
+      <tr><td>0xB10C OFAC lists</td><td>18 assets incl. USDT and TRX; nightly at 0 UTC</td><td><span class="e e-F">F</span> <a href="https://github.com/0xB10C/ofac-sanctioned-digital-currency-addresses">GitHub</a> MIT</td></tr>
+      <tr><td>Chainalysis oracle</td><td><code>isSanctioned</code> at <code>0x40C5…c8fb</code> on 8 EVM chains (Base <code>0x3A91…739B</code>); US/EU/UN; free</td><td><span class="e e-F">F</span> <a href="https://go.chainalysis.com/chainalysis-oracle-docs.html">docs</a></td></tr>
+      <tr><td>USDT contract</td><td><code>addBlackList</code>, <code>isBlackListed</code>, event <code>AddedBlackList</code> (confirm on Tron)</td><td><span class="e e-F">F</span> <a href="https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7#code">verified source</a></td></tr>
+      <tr><td>Proof-of-reserves lists, ScamSniffer, Chainabuse, MistTrack</td><td>First-party wallets; scam labels</td><td><span class="e e-U">U</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>Could not verify: the to-do list</h4>
+  <ul class="small">
+    <li><strong>SAHYOG:</strong> the <em>X Corp</em> outcome; VASP onboarding; the Bitget release.</li>
+    <li><strong>I4C systems:</strong> CFCFRMS; the Sep 2024 launches (Suspect Registry, CFMC, Samanvaya, Cyber Commandos).</li>
+    <li><strong>Law:</strong> BNSS s.112; PMLA s.5/17/50; CERT-In 2022; MHA MLAT guidelines; Tether’s LE policy text.</li>
+    <li><strong>Registration status:</strong> Indian exchanges’ LE contacts; WazirX 2026 status; Coinbase registration; the current registered count.</li>
+    <li><strong>Crime patterns:</strong> UNODC 2024; T3 FCU; Operation Chakra; ED USDT cases; digital-arrest statistics.</li>
+    <li><strong>Tools:</strong> vendor pricing and Indian usage; CipherTrace status; indigenous tools.</li>
+    <li><strong>Methods:</strong> FATF red flags (403); taint-model papers.</li>
+    <li><strong>Bridges:</strong> Wormholescan, deBridge, Chainflip, canonical bridges, BTTC; the DefiLlama licence; eXch.</li>
+    <li><strong>Data:</strong> Tronscan authenticated limits; NodeReal Enhanced on Free; proof-of-reserves lists; Etherscan’s “1,000 records per call” claim.</li>
+  </ul>
+</section>
+
+<section id="decisions" aria-labelledby="h-dec">
+  <div class="sec-head"><div class="eyebrow">Step 4</div><h2 id="h-dec">Feature decisions</h2></div>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Feature</th><th>Decision</th><th>Reason</th><th>Effort</th><th>Jury impact</th></tr></thead>
+    <tbody>
+      <tr><td>Ranked multi-hop trace</td><td><span class="chip s-done">Keep + fix</span></td><td>The heart of the PS; the defects are what an expert probes</td><td>S</td><td>High</td></tr>
+      <tr><td>Tron adapter + tag harvesting</td><td><span class="chip s-done">Keep, invest</span></td><td>USDT-TRC20 is the Indian case reality; tags are the Tron label source</td><td>S</td><td>High</td></tr>
+      <tr><td>Deposit-address detector</td><td><span class="chip s-done">Keep + fix</span></td><td>The most actionable output</td><td>S</td><td>High</td></tr>
+      <tr><td>Plain-language summary</td><td><span class="chip s-done">Keep + fix</span></td><td>Wins non-technical judges</td><td>S</td><td>High</td></tr>
+      <tr><td>s.63 evidence pack</td><td><span class="chip s-done">Keep + harden</span></td><td>No foreign tool emits it; add a cutoff and raw-response hashes</td><td>S–M</td><td>High</td></tr>
+      <tr><td>SAHYOG draft + routing</td><td><span class="chip s-partial">Rework</span></td><td>Completes a compulsory row; misroutes the core case today</td><td>S–M</td><td>High</td></tr>
+      <tr><td>Case management + NCRP/CCTNS</td><td><span class="chip s-done">Keep + extend</span></td><td>Add <code>case_addresses</code> for linking</td><td>S</td><td>High</td></tr>
+      <tr><td>Indian VASP dataset</td><td><span class="chip s-done">Keep + expand</span></td><td>Tron addresses; ZebPay, Mudrex, Giottus; legal entity + FIU status</td><td>M</td><td>High</td></tr>
+      <tr><td>Confidence score</td><td><span class="chip s-partial">Rework</span></td><td>Evidence-based and explained</td><td>S</td><td>High</td></tr>
+      <tr><td>Risk engine</td><td><span class="chip s-done">Keep + fix</span></td><td>All candidates; category mapping</td><td>S</td><td>Med</td></tr>
+      <tr><td>Typologies</td><td><span class="chip s-done">Keep</span></td><td>Add chain-hop and mixer→exchange later</td><td>S</td><td>Med</td></tr>
+      <tr><td>Ethereum / Polygon</td><td><span class="chip s-done">Keep + fix window</span></td><td>Second most common path</td><td>S</td><td>Med</td></tr>
+      <tr><td>Bitcoin via Blockchair</td><td><span class="chip s-partial">Replace</span></td><td>Esplora + CIOH</td><td>M</td><td>Med</td></tr>
+      <tr><td>BNB / Solana</td><td><span class="chip s-neutral">Reduce</span></td><td>Keep; don’t demo</td><td>—</td><td>Low</td></tr>
+      <tr><td>Exposure wheels</td><td><span class="chip s-neutral">Reduce in demo</span></td><td>Show one</td><td>—</td><td>Low</td></tr>
+      <tr><td>Chainalysis oracle / Screening API</td><td><span class="chip s-done">Keep</span> / <span class="chip s-neutral">Dormant</span></td><td>Never claim the API on slides</td><td>—</td><td>Low</td></tr>
+      <tr><td>INR, UPI trail, watchlist, Coverage page</td><td><span class="chip s-done">Keep</span></td><td>Cheap, India-specific, honest</td><td>—</td><td>Low–Med</td></tr>
+      <tr><td>Dashboard</td><td><span class="chip s-done">Keep + 2 charts</span></td><td>Cases by VASP/chain; linked-case clusters</td><td>S</td><td>Med</td></tr>
+      <tr><td>Auth + audit</td><td><span class="chip s-done">Keep + role gate</span></td><td>Supervisor approval before submission</td><td>S</td><td>Med</td></tr>
+      <tr><td>Streamlit UI · empty <code>chainalysis_oracle.py</code></td><td><span class="chip s-missing">Cut</span></td><td>Legacy duplicate · dead file</td><td>S</td><td>Low</td></tr>
+      <tr><td>Bridge / swap identification</td><td><span class="chip s-partial">Add</span></td><td>Compulsory, missing</td><td>M</td><td>High</td></tr>
+      <tr><td>Cross-chain continuation</td><td><span class="chip s-partial">Add</span></td><td>Cheap after the bridge MVP</td><td>S</td><td>High</td></tr>
+      <tr><td>SAHYOG intake + mock + OpenAPI</td><td><span class="chip s-partial">Add</span></td><td>Makes “integrated through APIs” honest</td><td>M</td><td>High</td></tr>
+      <tr><td>Case report PDF · VASP directory</td><td><span class="chip s-partial">Add</span></td><td>Reports and routing are compulsory</td><td>S–M</td><td>High</td></tr>
+      <tr><td>Cross-case linking</td><td><span class="chip s-partial">Add</span></td><td>The differentiator</td><td>S–M</td><td>High</td></tr>
+      <tr><td>Rate limiter + tx cache + setup script</td><td><span class="chip s-partial">Add small</span></td><td>Demo stability, reproducibility</td><td>S</td><td>Med</td></tr>
+      <tr><td>Redis / queue / workers</td><td><span class="chip s-missing">Slide only</span></td><td>No demo value</td><td>L</td><td>Low</td></tr>
+      <tr><td>ML/GNN classifier · LLM chat</td><td><span class="chip s-missing">Don’t add</span></td><td>Unexplainable in court; the deterministic summary is a feature</td><td>—</td><td>avoid</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note"><p><strong>Is the scope right?</strong> Breadth is already bigger than its depth. Stop adding breadth.</p>
+    <ul>
+      <li>Spend about 40% of the remaining time on correctness and demo robustness.</li>
+      <li>About 40% on the two differentiators plus the bridge MVP.</li>
+      <li>About 20% on the deck and Q&amp;A drills.</li>
+    </ul>
+    <p>That is right for about two weeks with one main builder. With three days, take the minimum cut in Step 8.</p></div>
+
+  <h3>Differentiators evaluated</h3>
+  <div class="tbl"><table class="w-xwide">
+    <thead><tr><th>Idea</th><th>Why I4C cares</th><th>Today</th><th>Effort</th><th>Demo</th><th>Verdict</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1 · Cross-case linking via shared deposit addresses</strong></td><td>One deposit address = one KYC’d account; one s.94 notice can resolve many FIRs; NCRP’s suspect repository has no wallets</td><td>Deposit evidence computed but not stored</td><td>S–M</td><td>“3 complaints, 2 states → one CoinDCX deposit address → 1 notice”</td><td><span class="chip s-done">Pursue</span></td></tr>
+      <tr><td>2 · Freeze-first watchlist</td><td>Asset-freezing efficiency is a stated goal</td><td>Re-trace alerts; no VASP-arrival trigger</td><td>M</td><td>Needs moving funds or a replay</td><td><span class="chip s-neutral">Later</span></td></tr>
+      <tr><td>3 · Explainable confidence</td><td>Court and defence scrutiny</td><td>Sources shown; formula naïve</td><td>S</td><td>Good</td><td><span class="chip s-partial">Must-fix hygiene</span></td></tr>
+      <tr><td><strong>4 · Smart routing by registration &amp; jurisdiction</strong></td><td>The PS says “route to the correct VASP”</td><td>A four-way rule that misroutes</td><td>S–M</td><td>CoinDCX → s.94; Kraken → LE portal/MLAT; USDT → issuer freeze</td><td><span class="chip s-done">Pursue</span></td></tr>
+      <tr><td>5 · New: freeze where it sits (USDT issuer)</td><td>USDT on Tron dominates; contract-level blacklist</td><td>Nothing</td><td>S–M</td><td>“₹X still in USDT; not blacklisted → Tether pack”</td><td><span class="chip s-neutral">Stretch</span></td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="panel"><h4>#1 minimum build (1.5–2 days)</h4><ul class="small">
+      <li>Table <code>case_addresses(case_id, chain, address, role, vasp)</code>, filled in <code>save_case</code>.</li>
+      <li><code>GET /v1/cases/{id}/linked</code> and <code>GET /v1/links?min_cases=2</code>, via one SQL self-join.</li>
+      <li>A linked-cases panel, a dashboard tile, and “draft one consolidated notice”.</li>
+      <li>Three seeded cases marked DEMO whose real seed wallets sweep to one deposit address.</li>
+    </ul></div>
+    <div class="panel"><h4>#4 minimum build (1–2 days)</h4><ul class="small">
+      <li><code>vasp_directory.csv</code>: name, aliases, legal entity, jurisdiction, FIU status + source + date, LE channel. Seeded from the Lok Sabha list, penalty orders and all three waves.</li>
+      <li><code>recommend_instrument(result, risk, request_type)</code>:
+        <ul>
+          <li>disclosure → s.94;</li>
+          <li>freeze → a state-aware s.106/s.107 note (the officer chooses);</li>
+          <li>offshore → LE portal or MLAT;</li>
+          <li>USDT at rest → issuer freeze.</li>
+        </ul></li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="mvp" aria-labelledby="h-mvp">
+  <div class="sec-head"><div class="eyebrow">Step 5</div><h2 id="h-mvp">Minimum viable versions of the hard parts</h2></div>
+  <h3>Bridge and cross-chain swap identification (~3 days)</h3>
+  <p class="small muted">Goal: tag bridge and swap contracts as their own entity type, decode the destination where the protocol publishes it, and offer a one-click continuation. Never guess a destination silently.</p>
+  <ol>
+    <li><strong>Registry</strong> in <code>app/data/bridges.py</code>:
+      <ul>
+        <li>seed contract addresses from DefiLlama <code>bridgeNetworkData.ts</code> (check its licence);</li>
+        <li>add ChangeNOW, SimpleSwap, FixedFloat, Guardarian and Changelly as <code>swap_service</code>;</li>
+        <li>extend the Tronscan tag keywords: allbridge, bttc, wormhole, stargate, layerzero, across, thorchain, debridge → bridge; changenow, fixedfloat, simpleswap, sideshift, guardarian, changelly → swap_service.</li>
+      </ul></li>
+    <li><strong>Engine</strong>: typed <code>bridge</code> / <code>swap_service</code> terminals with no deposit scoring, plus a <code>crosschain</code> field on the candidate.</li>
+    <li><strong>Risk</strong>: at least medium, reason “chain-hop: funds continue on another chain”.</li>
+    <li><strong>Decoders</strong> in <code>app/graph/crosschain.py</code>, strongest first:
+      <ul>
+        <li>THORChain memo from BTC OP_RETURN via Esplora;</li>
+        <li>LI.FI status API;</li>
+        <li>LayerZero Scan;</li>
+        <li>a same-address or amount/time heuristic, labelled “heuristic”.</li>
+      </ul></li>
+    <li><strong>API + UI</strong>: <code>POST /v1/crosschain/resolve</code>; “Funds left Tron via Allbridge toward Ethereum 0x… (LI.FI)” with a “Continue trace on Ethereum” button linking parent and child cases.</li>
+    <li><strong>Tests</strong>: the memo parser on the documented examples; registry lookup; the risk rule.</li>
+  </ol>
+
+  <h3>Multi-chain, Tron first</h3>
+  <p class="small muted">Order: Tron → Ethereum → BSC → Polygon → Bitcoin → Solana.</p>
+  <ul>
+    <li><strong>Tron:</strong>
+      <ul>
+        <li>a canonical USDT allow-list;</li>
+        <li>a temporal filter, fetching after the inflow with <code>start_timestamp</code>;</li>
+        <li>persist harvested tags to <code>learned_labels</code>;</li>
+        <li>the activator / fee-funder signal (M);</li>
+        <li>a USDT <code>isBlackListed</code> check;</li>
+        <li>a TronGrid fallback adapter.</li>
+      </ul></li>
+    <li><strong>Ethereum / Polygon:</strong> <code>sort=desc</code> or a time window; stablecoin allow-lists.</li>
+    <li><strong>BSC:</strong> token transfers + an inbound query on NodeReal (check its parameters first). Low priority.</li>
+    <li><strong>Bitcoin:</strong> an Esplora adapter; CIOH union-find; skip CoinJoin-shaped transactions (≥5 equal outputs); conservative change rules (address type + power of ten + fresh address).</li>
+    <li><strong>Solana:</strong> keep; add pagination later; don’t demo.</li>
+  </ul>
+
+  <h3>Realistic SAHYOG mock</h3>
+  <ul>
+    <li><strong>Separate service</strong> <code>mock_sahyog/app.py</code> (FastAPI, ~150 lines, port 8100):
+      <ul>
+        <li>a directory from <code>vasp_directory.csv</code>;</li>
+        <li><code>POST /v1/vasp-requests</code> → 202, then a timer drives ACKNOWLEDGED → RESPONDED, with a body stamped “MOCK DATA — NOT A REAL DISCLOSURE”;</li>
+        <li>HMAC-signed callbacks;</li>
+        <li><code>POST /v1/complaints/push</code> to feed VASP-Trace’s intake.</li>
+      </ul></li>
+    <li><strong>Adapter</strong> <code>app/sahyog/client.py</code> using <code>SAHYOG_BASE_URL</code> (mock by default); intake <code>POST /v1/sahyog/cases</code> auto-traces and auto-drafts; <code>POST /v1/sahyog/events</code> verifies and de-duplicates. Submission needs a supervisor or admin role.</li>
+    <li><strong>UI:</strong> “Submit via SAHYOG” with a permanent MOCK badge, live status and a timeline. Effort: 1.5–2.5 days.</li>
+  </ul>
+<pre class="code">openapi: 3.1.0
+info: {title: SAHYOG–VASP request exchange (PROPOSED, not an official I4C API), version: 0.1.0}
+paths:
+  /v1/intermediaries:
+    get:
+      parameters: [{name: category, in: query, schema: {type: string, enum: [VASP]}}]
+      responses: {'200': {description: Directory}}
+  /v1/vasp-requests:
+    post:
+      parameters: [{name: Idempotency-Key, in: header, required: true, schema: {type: string}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaspRequest'}}}}
+      responses: {'202': {description: Accepted}}
+  /v1/vasp-requests/{sahyog_ref}:
+    get: {parameters: [{name: sahyog_ref, in: path, required: true, schema: {type: string}}], responses: {'200': {description: Status}}}
+components:
+  schemas:
+    VaspRequest:
+      type: object
+      required: [request_id, request_type, case, requesting_agency, legal_basis, target, subjects, evidence]
+      properties:
+        request_id: {type: string, format: uuid}
+        request_type: {type: string, enum: [DISCLOSURE, FREEZE, RELEASE, PRESERVE]}
+        case: {type: object, properties: {ncrp_ack_no: {type: string}, fir_no: {type: string}, state: {type: string}}}
+        legal_basis: {type: object, properties: {provision_code: {type: string}, order_ref: {type: string}}}
+        target: {type: object, properties: {intermediary_id: {type: string}}}
+        subjects: {type: array, items: {type: object, properties: {chain: {type: string}, address: {type: string}, role: {type: string}, tx_hashes: {type: array, items: {type: string}}}}}
+        evidence: {type: object, properties: {as_of_block: {type: string}, bundle_sha256: {type: string}}}</pre>
+
+  <h3>Scalability: build now vs slide only</h3>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>Build now</th><th>Architecture slide only</th></tr></thead>
+    <tbody>
+      <tr><td>Token-bucket rate limiter per provider (re-enables parallel fetches)</td><td>Redis: shared cache, distributed limiter, job queue</td></tr>
+      <tr><td>Persistent tx cache with a payload SHA-256 (the data behind every certificate)</td><td>Worker pool with per-chain queues; horizontal API replicas</td></tr>
+      <tr><td>Trace-as-job for slow chains (DB row + polling)</td><td>Self-hosted indexers at I4C/NCFL: no rate limits, no address leakage</td></tr>
+      <tr><td>Setup script + <code>/v1/health</code></td><td>National cross-case graph store; streaming alerts; label review service; SSO; hash-chained audit ledger</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">Capacity today (inference): a worst-case trace is ≤60 lookups, about 180–360 Etherscan calls, so roughly 280–550 worst-case ETH traces a day per free key. Typical traces cost far less. Bitcoin has zero capacity without a key.</p>
+</section>
+
+<section id="solution" aria-labelledby="h-sol">
+  <div class="sec-head"><div class="eyebrow">Step 6</div><h2 id="h-sol">End-to-end solution</h2></div>
+  <div class="tbl"><table class="w-mid">
+    <thead><tr><th>#</th><th>Step</th><th>Today</th><th>Gap</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>NCRP / 1930 complaint reaches SAHYOG with a wallet</td><td><span class="chip s-missing">Missing</span></td><td>Intake + mock</td></tr>
+      <tr><td>2</td><td>Wallet auto-analysed</td><td><span class="chip s-done">Done</span> on paste · auto-trigger <span class="chip s-missing">Missing</span></td><td>Intake</td></tr>
+      <tr><td>3</td><td>Multi-hop tracing</td><td><span class="chip s-done">Tron/ETH/Polygon</span> <span class="chip s-partial">BNB/SOL</span> <span class="chip s-missing">BTC blocked</span></td><td>Esplora</td></tr>
+      <tr><td>4</td><td>Clustering</td><td><span class="chip s-partial">Partial</span></td><td>CIOH, cluster expansion</td></tr>
+      <tr><td>5</td><td>VASP identified with confidence</td><td><span class="chip s-done">Done</span></td><td>Explainable score</td></tr>
+      <tr><td>6</td><td>Risk, typologies, sanctions</td><td><span class="chip s-done">Done</span></td><td>Defects 1, 6</td></tr>
+      <tr><td>7</td><td>Report + s.63 certificate</td><td><span class="chip s-done">Certificate</span> <span class="chip s-partial">no case report</span></td><td>Case report</td></tr>
+      <tr><td>8</td><td>Request drafted and routed to the correct VASP</td><td><span class="chip s-mocked">Mocked</span></td><td>Directory, request types</td></tr>
+      <tr><td>9</td><td>Transmitted via SAHYOG</td><td><span class="chip s-mocked">Mocked</span></td><td>Mock service</td></tr>
+      <tr><td>10</td><td>Status tracking</td><td><span class="chip s-done">Manual</span> · callbacks <span class="chip s-missing">Missing</span></td><td>Callbacks</td></tr>
+      <tr><td>11</td><td>VASP response → KYC → linked cases → freeze or arrest</td><td><span class="chip s-missing">Missing</span></td><td>Linking, response handling</td></tr>
+      <tr><td>12</td><td>Ongoing monitoring</td><td><span class="chip s-partial">Partial</span></td><td>Push, VASP-arrival trigger</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Architecture</h3>
+  <p class="small muted">Dashed borders: planned or mocked components.</p>
+<pre class="mermaid">flowchart LR
+  officer(["Investigating officer"])
+  subgraph gov["Government systems"]
+    ncrp["NCRP / 1930 complaint"]
+    sahyog["SAHYOG portal"]
+  end
+  subgraph fe["Next.js console"]
+    ui["Investigate · Cases · Alerts · Dashboard · Coverage"]
+  end
+  subgraph be["FastAPI service"]
+    auth["JWT auth · audit log"]
+    api["trace · certificate · cases · watchlist endpoints"]
+    intake["SAHYOG intake endpoint"]:::missing
+    adapter["SAHYOG adapter + mock service"]:::mocked
+  end
+  subgraph engine["Analysis engine"]
+    trace["Ranked multi-hop trace (NetworkX)"]
+    sweep["Deposit-address detector"]
+    risk["Risk: trail + behaviour, typologies, exposure"]
+    xchain["Bridge / swap decoder"]:::missing
+    linker["Cross-case linker"]:::missing
+    summary["Plain-language summary"]
+  end
+  subgraph data["Data layer"]
+    labels["Labels: Indian VASP CSV, GraphSense, Tronscan tags"]
+    sanc["Sanctions: OFAC snapshot, Chainalysis oracle"]
+    vaspdir["VASP directory: FIU status, LE channel"]:::missing
+    pg[("Postgres (Supabase): cases, officers, audit, events, upi_hops, watchlist")]
+    cache["60 s in-process cache"]
+  end
+  subgraph ext["Public chain APIs"]
+    tron["Tronscan"]
+    eth["Etherscan V2: ETH, Polygon"]
+    btc["Blockchair, to be replaced by Esplora"]
+    bnb["NodeReal: BNB"]
+    sol["Helius: Solana"]
+    br["LI.FI, LayerZero Scan, THORChain Midgard"]:::missing
+  end
+  evidence["s.63 BSA evidence pack"]
+  vasp["VASPs: exchanges, custodians"]
+  officer --> ui --> api
+  api --> auth
+  ncrp -.-> sahyog
+  sahyog -. complaint push .-> intake
+  intake -.-> trace
+  api --> trace
+  trace --> cache
+  cache --> tron &amp; eth &amp; btc &amp; bnb &amp; sol
+  trace --> labels
+  trace --> sweep
+  trace -.-> xchain
+  xchain -.-> br
+  trace --> risk
+  risk --> sanc
+  risk --> summary
+  api --> evidence
+  api --> pg
+  linker -.-> pg
+  vaspdir -.-> adapter
+  api --> adapter
+  adapter -. disclosure or freeze request .-> sahyog
+  sahyog -.-> vasp
+  classDef missing stroke:#c62828,stroke-width:2px,stroke-dasharray:6 4
+  classDef mocked stroke:#ef6c00,stroke-width:2px,stroke-dasharray:3 3</pre>
+
+  <h3>Description</h3>
+  <p>VASP-Trace is an India-first blockchain-intelligence engine for I4C and state cyber cells. Given a suspect wallet from an NCRP complaint, it follows the money across Tron, Ethereum, Polygon, BNB Chain, Solana and Bitcoin to the nearest exchange or custodial service. It names the specific deposit address that maps to one KYC’d account, and explains its confidence from named evidence. It scores the wallet’s own behaviour against published laundering typologies and screens every hop against sanctions lists. Then it produces what an Indian investigation needs next: a BNSS notice routed to the right VASP by FIU-IND registration status, and a Bharatiya Sakshya Adhiniyam s.63 certificate with a reproducible hash. It runs on free public data, keeps case data in India, and says “unattributed” instead of guessing.</p>
+  <div class="pitch">
+    <div class="eyebrow">Elevator pitch</div>
+    <p id="pitch">Paste a scam wallet and get the exchange deposit account behind it in seconds, with the evidence, the confidence and the right BNSS notice already drafted. VASP-Trace turns days of manual blockchain tracing into a court-ready SAHYOG request for India’s cyber police.</p>
+    <button type="button" class="btn" id="copy-pitch">Copy pitch</button>
+  </div>
+</section>
+
+<section id="strategy" aria-labelledby="h-str">
+  <div class="sec-head"><div class="eyebrow">Step 7</div><h2 id="h-str">SIH strategy</h2></div>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Criterion</th><th>Now</th><th>After plan</th><th>How to raise it</th></tr></thead>
+    <tbody>
+      <tr><td>Novelty</td><td class="num">6</td><td class="num">8</td><td>Cross-case linking; freeze routing grounded in 2026 High Court law; bridge decode</td></tr>
+      <tr><td>Feasibility</td><td class="num">8</td><td class="num">9</td><td>Remove failing chains from the demo; replay fallback; setup script</td></tr>
+      <tr><td>Impact to I4C</td><td class="num">7</td><td class="num">9</td><td>Link complaints; route correctly; “1 notice resolves 3 FIRs”</td></tr>
+      <tr><td>Technical depth</td><td class="num">7</td><td class="num">8.5</td><td>Fix defects 1–7; Esplora + CIOH; decoders; explainable score</td></tr>
+      <tr><td>Presentation</td><td class="num">6</td><td class="num">8</td><td>Scripted 6-minute demo; one exposure wheel; MOCK badges; updated deck</td></tr>
+      <tr><td>Scalability</td><td class="num">4</td><td class="num">6</td><td>Small real pieces + a credible production slide</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="two">
+    <div class="panel"><h4>What other teams will likely build</h4><ul class="small">
+      <li>Explorer wrappers: ETH only, largest transfer, a small exchange list.</li>
+      <li>ML/GNN classifiers on the Elliptic dataset, with no VASP attribution.</li>
+      <li>Dashboards on seeded data with an unlabelled “SAHYOG API”.</li>
+      <li>Vendor free-tier sanctions wrappers.</li>
+      <li>LLM chat over transactions.</li>
+      <li>Neo4j views of pre-downloaded data.</li>
+    </ul></div>
+    <div class="panel"><h4>How to stand out</h4><ul class="small">
+      <li>A live trace of a real Indian-case Tron wallet.</li>
+      <li>Deposit-address output with routing and an s.63 certificate: the next action is ready.</li>
+      <li>Cross-case linking.</li>
+      <li>Honesty: the Coverage page and MOCK badges.</li>
+      <li>Grounded in current Indian law and FIU-IND data.</li>
+      <li>Bridges as a typed terminal with decoded destinations.</li>
+    </ul></div>
+  </div>
+
+  <h3>Demo script (about 6½ minutes)</h3>
+  <div class="note warn"><p><strong>Before you start:</strong></p>
+    <ul>
+      <li>Phase 0 fixes are in; otherwise skip the ETH 1-hop address, which shows a false deposit card.</li>
+      <li>Run a warm-up trace 60 s before, or use replay mode; have a recording ready.</li>
+      <li>Do not demo BTC, Solana, BNB or the Tornado address.</li>
+    </ul></div>
+  <div class="tbl"><table class="w-wide">
+    <thead><tr><th>Time</th><th>Beat</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td class="num">0:00–0:40</td><td>Hook: an NCRP complaint lists one Tron wallet; today an officer clicks through explorers for days.</td><td>—</td></tr>
+      <tr><td class="num">0:40–2:10</td><td>Paste <code>TNnrfcBk7…P5</code> → 3 s → Binance-Hot 7, 1 hop. Deposit address identified (0.95): about 100% forwarded, 15 funders, minutes of hold. HIGH risk from behaviour even though Binance is compliant. Plain-language paragraph. Source: Tronscan tag.</td><td><span class="chip s-done">live</span></td></tr>
+      <tr><td class="num">2:10–2:50</td><td>Graph: funders → subject → Binance; click an edge for tx hash, USDT and ₹.</td><td><span class="chip s-done">live</span></td></tr>
+      <tr><td class="num">2:50–3:40</td><td>BNSS s.94 to Binance (registered after the 19 Jun 2024 order). Case page: NCRP ack + FIR → generate request → Submit via SAHYOG → Acknowledged by callback.</td><td><span class="chip s-done">draft</span> <span class="chip s-mocked">MOCK submit</span></td></tr>
+      <tr><td class="num">3:40–4:20</td><td>Download the evidence pack; open Part A and the hash report; the defence re-derives the SHA-256.</td><td><span class="chip s-done">live</span></td></tr>
+      <tr><td class="num">4:20–5:10</td><td>Three DEMO-seeded complaints resolve to one deposit address → one notice covers 3 FIRs.</td><td><span class="chip s-partial">after #1</span></td></tr>
+      <tr><td class="num">5:10–5:50</td><td>ETH 3-hop → Kraken 10 (offshore, flagged) → LE portal / MLAT route, or a bridge terminal → “Continue on Ethereum”.</td><td><span class="chip s-done">pre-run</span> <span class="chip s-partial">routing after #4</span></td></tr>
+      <tr><td class="num">5:50–6:30</td><td>Coverage page, architecture, the ask: a pilot with one state cyber cell.</td><td>—</td></tr>
+    </tbody>
+  </table></div>
+  <p class="small muted">Fallbacks: a recorded video of every beat; replay mode from stored trace JSON. If Tronscan throttles, say so and switch to the replay.</p>
+
+  <h3>The 10 toughest jury questions</h3>
+  <div class="qa">
+    <article><h4><b>01</b>SAHYOG has no public API. What did you integrate?</h4><p>Public SAHYOG documentation describes takedown notices under IT Act s.79(3)(b); the Karnataka HC record lists 28+ issuing authorities. Your PS says VASP disclosure requests also flow through it. We built the engine side: a signed request pack, an adapter, and a mock SAHYOG speaking a proposed OpenAPI contract, all labelled MOCK. Connecting to the real portal is configuration once I4C exposes an endpoint.</p></article>
+    <article><h4><b>02</b>How do you know an attribution is right? What’s your false-positive rate?</h4><p>Every attribution carries its evidence: label source and tier, hops, and deposit signals with their numbers. Unnamed addresses stay “unattributed”. Precision is not yet measured; next we evaluate against known exchange deposit addresses. The deposit heuristic is Victor (FC 2020), which clustered 17.9% of active Ethereum addresses.</p></article>
+    <article><h4><b>03</b>Launderers use 20 hops, mixers and bridges. Then what?</h4><p>12 hops by default (20 max), a 60-lookup budget, every branch with ≥10% of the value kept, and dropped branches reported. A mixer ends the branch with HIGH exposure. A bridge is a typed terminal: we decode the destination when the protocol publishes it (THORChain memo, LI.FI, LayerZero); otherwise we say the trail continues on chain X.</p></article>
+    <article><h4><b>04</b>Most Indian fraud money is USDT on Tron. Can you freeze it?</h4><p>Two paths:</p>
+      <ul>
+        <li>at the exchange: s.94 for KYC, and a freeze under the procedure the jurisdiction’s High Court requires;</li>
+        <li>at the issuer: USDT has a contract blacklist (<code>addBlackList</code> / <code>isBlackListed</code>), so while funds sit in USDT we prepare an issuer-freeze request and show whether the address is already frozen.</li>
+      </ul></article>
+    <article><h4><b>05</b>Which provision does your notice cite after the BNSS?</h4><p>Disclosure: BNSS s.94. Freezing: the 2026 rulings split.</p>
+      <ul>
+        <li><strong>Andhra Pradesh HC</strong> (31 Mar 2026): a freeze needs a Magistrate’s order under s.107.</li>
+        <li><strong>Karnataka HC</strong> (10 Aug 2026): a debit freeze is s.106 seizure, reported forthwith.</li>
+        <li><strong>Bombay HC</strong> (30 Jul 2026): s.94 can’t freeze; ss.106–107 can.</li>
+      </ul>
+      <p>The tool shows the split, drafts both variants, and the officer chooses. It never auto-files.</p></article>
+    <article><h4><b>06</b>Is the output admissible? Who signs?</h4><p>BSA s.63 Part A (party) and Part B (expert) in the Schedule’s format, with a SHA-256 hash report. Sworn fields are left blank. The certified file is canonical JSON with no clock readings, so the defence can re-derive the hash; we are adding a block cutoff and raw-response hashes.</p></article>
+    <article><h4><b>07</b>Data sovereignty and security?</h4><p>Case data stays in our self-hostable Postgres. Only public-chain lookups leave the system, and in production those move to I4C-hosted indexers. JWT auth and an audit log of every trace, certificate and status change are in place; roles and supervisor approval are being enforced.</p></article>
+    <article><h4><b>08</b>Why not just buy Chainalysis or TRM?</h4><p>Use them if you have them; we are complementary. We add Indian VASP labels (the open datasets carry almost none), BNSS/BSA outputs, NCRP/CCTNS/UPI linkage, SAHYOG-shaped requests, and a cost that reaches every district cyber cell. Vendor labels can plug in as another source.</p></article>
+    <article><h4><b>09</b>How does it scale to lakhs of complaints?</h4><p>A trace is bounded at 60 lookups. Today that is about 280–550 worst-case ETH traces a day per free key. Production means self-hosted indexers, a Redis queue with workers, a shared label store and a national cross-case graph. Linking reduces work: one notice covers many complaints.</p></article>
+    <article><h4><b>10</b>What about offshore and unregistered exchanges?</h4><p>Routing is by registration:</p>
+      <ul>
+        <li>registered Indian VASPs (CoinDCX, WazirX, CoinSwitch, ZebPay, per the Dec 2023 Lok Sabha reply) → direct notice;</li>
+        <li>registered offshore (Binance, KuCoin, Bybit) → their LE portals;</li>
+        <li>offshore entities in FIU-IND’s three waves (less those since registered) → LE portal, else a letter of request / MLAT, plus FIU-IND intimation;</li>
+        <li>stablecoin issuers → contract-level freeze.</li>
+      </ul></article>
+  </div>
+  <p class="small muted">Backup questions to rehearse: “Why is a single-source label 95%?” → fixed (defect 5). “Tornado sanctioned or not?” → delisted 21 Mar 2025. “Fake USDT?” → allow-list.</p>
+
+  <h3>Pitch deck</h3>
+  <ol class="small">
+    <li>Title: VASP-Trace, SIH26182 (MHA / I4C), the one-line pitch.</li>
+    <li>The problem as one case.</li>
+    <li>Why it’s hard now: USDT on Tron; over 90% of trading offshore after TDS; India #1 in adoption; three FIU-IND waves.</li>
+    <li>Our answer in one screen.</li>
+    <li>Live demo.</li>
+    <li>How it works: the pipeline.</li>
+    <li>Explainable attribution.</li>
+    <li>India-native outputs: BNSS routing with the High Court split, the s.63 pack, NCRP/CCTNS, UPI.</li>
+    <li>Differentiator: cross-case linking.</li>
+    <li>Bridges and cross-chain.</li>
+    <li>SAHYOG contract, adapter and mock, with an honest status.</li>
+    <li>Architecture and scale.</li>
+    <li>Validation and limits.</li>
+    <li>Impact and roadmap: a pilot, a shared label registry, wallets in the NCRP suspect repository.</li>
+    <li>Team and ask.</li>
+  </ol>
+  <p class="small muted">Backup slides: the legal table, data sources and rate limits, the FIU lists, the confidence formula, the threat model.</p>
+</section>
+
+<section id="plan" aria-labelledby="h-plan">
+  <div class="sec-head"><div class="eyebrow">Step 8</div><h2 id="h-plan">Action plan</h2></div>
+  <p class="muted">Assumes about 14 working days, one primary builder, phone-only, hosted APIs only.</p>
+  <div class="tbl"><table class="w-xwide">
+    <thead><tr><th>Phase</th><th>Days</th><th>Tasks</th><th>Files</th><th>Effort</th></tr></thead>
+    <tbody>
+      <tr><td><strong>0 · Correctness</strong></td><td class="num">1–2</td><td>Category-less labels via <code>categorize()</code>; temporal <code>arrived_at</code>; deposit overclaim gate; label-aware confidence with breakdown; all-candidate risk; stablecoin allow-list; Tornado label; <code>sort=desc</code>; seed-fetch caveat; login 503</td><td><code>trace.py</code>, <code>chain_native_labels.py</code>, <code>summary.py</code>, <code>page.tsx</code>, <code>Verdict.tsx</code>, <code>risk.py</code>, <code>assets.py</code>, <code>known_mixers.py</code>, <code>etherscan.py</code>, <code>api/main.py</code></td><td>S each</td></tr>
+      <tr><td><strong>1 · Routing</strong></td><td class="num">3–4</td><td>VASP directory CSV with sources; request type → instrument; derived legal basis; deposit address + tx hashes in the draft; rendered notice letter PDF</td><td><code>vasp_directory.csv</code>, <code>gateway.py</code>, <code>fiu_compliance.py</code>, <code>certificate.py</code>, <code>cases/[id]/page.tsx</code></td><td>S–M</td></tr>
+      <tr><td><strong>2 · Linking</strong></td><td class="num">4–6</td><td><code>case_addresses</code> table; linked endpoints; panel + tile + consolidated notice; DEMO seed cases</td><td><code>case_store.py</code>, <code>api/main.py</code>, <code>dashboard/page.tsx</code>, <code>api.ts</code></td><td>S–M</td></tr>
+      <tr><td><strong>3 · Bridges</strong></td><td class="num">6–8</td><td>Registry + keywords + typed terminals + risk; THORChain / LI.FI / LayerZero decoders; continue-on-chain</td><td><code>bridges.py</code>, <code>crosschain.py</code>, <code>trace.py</code>, <code>risk.py</code>, <code>Verdict.tsx</code>, <code>entityColors.ts</code></td><td>M</td></tr>
+      <tr><td><strong>4 · SAHYOG</strong></td><td class="num">8–10</td><td>Mock service; adapter; intake; signed callbacks; role gate; OpenAPI file</td><td><code>mock_sahyog/app.py</code>, <code>sahyog/client.py</code>, <code>gateway.py</code>, <code>api/main.py</code></td><td>M</td></tr>
+      <tr><td><strong>5 · Bitcoin</strong></td><td class="num">10–11</td><td>Esplora adapter; CIOH union-find; CoinJoin skip; change rules (skip if behind)</td><td><code>esplora.py</code>, <code>cluster.py</code>, <code>chains.py</code></td><td>M</td></tr>
+      <tr><td><strong>6 · Demo + pitch</strong></td><td class="num">12–14</td><td>Replay mode; longer demo cache; setup script + health; README and MINDMAP corrections; deck, recording, two Q&amp;A drills</td><td><code>api/main.py</code>, <code>cache.py</code>, <code>scripts/setup.py</code>, <code>README.md</code></td><td>S–M</td></tr>
+    </tbody>
+  </table></div>
+  <div class="two">
+    <div class="note"><p><strong>Minimum cut (3 days):</strong> Phase 0, then routing (1.1–1.2), then linking (2.1–2.3), then replay mode and a recorded demo.</p></div>
+    <div class="note"><p><strong>Phone-only logistics:</strong></p>
+      <ul>
+        <li>No blockchain nodes needed.</li>
+        <li>Reach the demo through a tunnel to the PC, or host the frontend and API separately.</li>
+        <li>Ship the vendored datasets with the API (GraphSense is 85 MB; ship the prebuilt cache or a trimmed label file).</li>
+        <li>Keep the watchlist monitor off during judging.</li>
+      </ul></div>
+  </div>
+</section>
+
+<section id="assumptions" aria-labelledby="h-ass">
+  <div class="sec-head"><div class="eyebrow">Notes</div><h2 id="h-ass">Assumptions</h2></div>
+  <ol>
+    <li>Team size was not given; assumed one primary builder, AI-assisted, with teammates for the deck and rehearsal.</li>
+    <li>Time left was not given; assumed about 14 working days, with a 3-day minimum cut. The team’s docs mention a 36-hour finale window, so fixes are front-loaded.</li>
+    <li>Judges include I4C/MHA officials and a technical expert; the criteria are typical SIH ones, not an official rubric.</li>
+    <li>Compulsory vs optional and the scoring weights are as defined in the coverage section.</li>
+    <li>The PS statement that VASP requests go through SAHYOG is taken as the problem owner’s own description, although public sources describe takedowns only.</li>
+    <li>Test wallets are public-chain data from the repo. Anonymise any complaint context on slides.</li>
+    <li>Live results are from 27 Sep 2026 with the team’s keys; re-run before the demo.</li>
+    <li>The legal content is research, not legal advice. The officer chooses the instrument.</li>
+    <li>The version reviewed is the current working tree over commit 1628879.</li>
+    <li>The team’s own planning documents outside the repo were read for context; parts are outdated.</li>
+    <li>Research was limited by the search budget and by blocked agents; tags show what was verified.</li>
+    <li>Nothing outside <code>docs/sih-review/</code> was modified. The API ran with no database writes, using about nine traces of free-tier quota.</li>
+  </ol>
+  <footer>This page mirrors <code>docs/sih-review/REVIEW.md</code>, <code>COVERAGE.md</code> and <code>RESEARCH.md</code> in the repo as of 27 Sep 2026. The Markdown files remain the source of truth.</footer>
+</section>
+
+</main>
+
+<script>
+(function () {
+  var KEY = 'vt-review-filter';
+  var buttons = document.querySelectorAll('[data-filter]');
+  var cards = document.querySelectorAll('.req');
+  function apply(f) {
+    cards.forEach(function (c) { c.hidden = !(f === 'all' || c.getAttribute('data-status') === f); });
+    buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-filter') === f)); });
+    try { localStorage.setItem(KEY, f); } catch (e) {}
+  }
+  buttons.forEach(function (b) { b.addEventListener('click', function () { apply(b.getAttribute('data-filter')); }); });
+  var saved = 'all';
+  try { saved = localStorage.getItem(KEY) || 'all'; } catch (e) {}
+  if (!document.querySelector('[data-filter="' + saved + '"]')) saved = 'all';
+  apply(saved);
+
+  var jump = document.getElementById('jump');
+  if (jump) jump.addEventListener('change', function () {
+    if (jump.value) { location.hash = jump.value; jump.value = ''; }
+  });
+
+  var copyBtn = document.getElementById('copy-pitch');
+  var pitch = document.getElementById('pitch');
+  if (copyBtn && pitch) copyBtn.addEventListener('click', function () {
+    var done = function (msg) { copyBtn.textContent = msg; setTimeout(function () { copyBtn.textContent = 'Copy pitch'; }, 2200); };
+    var select = function () {
+      var r = document.createRange(); r.selectNodeContents(pitch);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      done('Selected. Copy it');
+    };
+    try {
+      navigator.clipboard.writeText(pitch.innerText).then(function () { done('Copied'); }, select);
+    } catch (e) { select(); }
+  });
+
+  var links = document.querySelectorAll('.nav a');
+  if ('IntersectionObserver' in window && links.length) {
+    var byId = {};
+    links.forEach(function (a) { byId[a.getAttribute('href').slice(1)] = a; });
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (en.isIntersecting && byId[en.target.id]) {
+          links.forEach(function (a) { a.removeAttribute('aria-current'); });
+          byId[en.target.id].setAttribute('aria-current', 'true');
+        }
+      });
+    }, { rootMargin: '-45% 0px -50% 0px' });
+    document.querySelectorAll('main section[id]').forEach(function (s) { io.observe(s); });
+  }
+})();
+</script>

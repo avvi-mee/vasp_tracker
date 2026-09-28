@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   type CaseDetail,
+  type LinkedCase,
+  type RecommendedInstrument,
+  type SahyogRequestType,
   generateSahyogDraft,
   getCase,
+  getLinkedCases,
   updateCase,
   updateSahyogStatus,
 } from "@/lib/api";
@@ -16,6 +21,13 @@ import { AppShell } from "@/components/AppShell";
 import { UpiTrail } from "@/components/UpiTrail";
 
 const SAHYOG_PIPELINE = ["draft", "ready_for_submission", "submitted", "acknowledged", "fulfilled"] as const;
+
+// States whose High Court has ruled on s.106 vs s.107 freezing (see
+// app/sahyog/gateway.py STATE_FREEZE_POSITION); any other state gets both drafts.
+const STATES = [
+  "Andhra Pradesh", "Karnataka", "Maharashtra", "Goa", "Delhi", "Gujarat", "Haryana", "Kerala",
+  "Madhya Pradesh", "Punjab", "Rajasthan", "Tamil Nadu", "Telangana", "Uttar Pradesh", "West Bengal", "Other",
+];
 
 export default function CaseDetailPage() {
   return <AuthGuard>{(officer) => <CaseDetailContent officer={officer} />}</AuthGuard>;
@@ -30,6 +42,9 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
   const [busy, setBusy] = useState(false);
   const [ncrp, setNcrp] = useState("");
   const [cctns, setCctns] = useState("");
+  const [requestType, setRequestType] = useState<SahyogRequestType>("disclosure");
+  const [stateName, setStateName] = useState("");
+  const [linked, setLinked] = useState<LinkedCase[]>([]);
 
   const reload = useCallback(() => {
     getCase(caseId)
@@ -39,6 +54,7 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
         setCctns(c.cctns_fir_number ?? "");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load case"));
+    getLinkedCases(caseId).then(setLinked).catch(() => setLinked([]));
   }, [caseId]);
 
   useEffect(() => {
@@ -118,24 +134,53 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
       </section>
 
       <section className="mb-6">
-        <SectionTitle>SAHYOG disclosure request</SectionTitle>
+        <SectionTitle>SAHYOG request — disclosure or freeze</SectionTitle>
         <p className="mb-2 text-xs text-ink-soft">
           Manual status tracking — nothing syncs automatically, since no public SAHYOG API exists to
           sync against. Update the status yourself as the request moves through the real portal.
         </p>
-        {!caseData.sahyog_status ? (
+        <div className="mb-3 flex flex-wrap items-end gap-3 text-xs">
+          <Field label="Request">
+            <select
+              value={requestType}
+              disabled={busy}
+              onChange={(e) => setRequestType(e.target.value as SahyogRequestType)}
+              className="rounded-md border border-wire bg-paper-raised px-2 py-1.5"
+            >
+              <option value="disclosure">Disclosure (KYC / records)</option>
+              <option value="freeze">Freeze</option>
+            </select>
+          </Field>
+          {requestType === "freeze" && (
+            <Field label="State (picks the s.106 / s.107 route)">
+              <select
+                value={stateName}
+                disabled={busy}
+                onChange={(e) => setStateName(e.target.value)}
+                className="rounded-md border border-wire bg-paper-raised px-2 py-1.5"
+              >
+                <option value="">Select state…</option>
+                {STATES.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
           <button
-            onClick={() => withBusy(() => generateSahyogDraft(caseId))}
+            onClick={() => withBusy(() => generateSahyogDraft(caseId, requestType, stateName))}
             disabled={busy}
             className="rounded-md bg-navy px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
-            {busy ? "Generating…" : "Generate SAHYOG request"}
+            {busy ? "Generating…" : caseData.sahyog_status ? "Regenerate request" : "Generate SAHYOG request"}
           </button>
-        ) : (
+        </div>
+        {caseData.sahyog_status && (
           <div className="rounded-md border border-wire bg-paper-raised p-4 text-xs">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="font-semibold text-navy">
-                {(caseData.sahyog_draft?.recommended_instrument as { label?: string })?.label ?? caseData.sahyog_instrument}
+                {(caseData.sahyog_draft?.recommended_instrument as RecommendedInstrument | undefined)?.label ?? caseData.sahyog_instrument}
               </span>
               <select
                 value={caseData.sahyog_status}
@@ -150,18 +195,14 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
                 ))}
               </select>
             </div>
-            <p className="mb-2 text-ink-soft">
-              {(caseData.sahyog_draft?.recommended_instrument as { reason?: string })?.reason}
-            </p>
-            <button
-              onClick={() => withBusy(() => generateSahyogDraft(caseId))}
-              disabled={busy}
-              className="text-navy underline"
-            >
-              Regenerate draft
-            </button>
+            <RecommendationDetail rec={caseData.sahyog_draft?.recommended_instrument as RecommendedInstrument | undefined} />
           </div>
         )}
+      </section>
+
+      <section className="mb-6">
+        <SectionTitle>Linked complaints</SectionTitle>
+        <LinkedCases linked={linked} />
       </section>
 
       <section className="mb-6">
@@ -188,6 +229,82 @@ function CaseDetailContent({ officer }: { officer: Officer }) {
         </div>
       </section>
     </AppShell>
+  );
+}
+
+const STRENGTH_TEXT: Record<LinkedCase["strength"], string> = {
+  same_beneficiary: "Same beneficiary — shared exchange deposit address",
+  same_wallet: "Same wallet reported again",
+  shared_intermediary: "Shared intermediate hop — a lead, not proof",
+};
+
+function LinkedCases({ linked }: { linked: LinkedCase[] }) {
+  if (linked.length === 0) {
+    return <div className="text-xs text-ink-soft">No other case shares an address with this one yet.</div>;
+  }
+  const beneficiary = linked.filter((l) => l.strength === "same_beneficiary");
+  const refs = beneficiary
+    .map((l) => [l.ncrp_ack_number && `NCRP ${l.ncrp_ack_number}`, l.cctns_fir_number && `FIR ${l.cctns_fir_number}`]
+      .filter(Boolean).join(" / ") || `Case #${l.case_id}`);
+  return (
+    <div className="flex flex-col gap-2 text-xs">
+      {beneficiary.length > 0 && (
+        <div className="rounded-md border border-navy/30 bg-ledger-soft px-3 py-2">
+          <span className="font-semibold text-navy">One notice can cover {beneficiary.length + 1} complaints.</span>{" "}
+          Cite these alongside this case in the disclosure request: {refs.join("; ")}.
+        </div>
+      )}
+      {linked.map((l) => (
+        <Link
+          key={l.case_id}
+          href={`/cases/${l.case_id}`}
+          className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-wire bg-paper-raised px-3 py-2 hover:bg-ledger-soft"
+        >
+          <span className="font-mono">
+            #{l.case_id} {l.seed_address.slice(0, 10)}…
+          </span>
+          <span className={l.strength === "same_beneficiary" ? "font-semibold text-navy" : "text-ink-soft"}>
+            {STRENGTH_TEXT[l.strength]}
+          </span>
+          <span className="font-mono text-ink-soft">
+            {l.shared.map((s) => `${s.address.slice(0, 8)}…`).join(", ")}
+          </span>
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+function RecommendationDetail({ rec }: { rec?: RecommendedInstrument }) {
+  if (!rec) return null;
+  return (
+    <div className="flex flex-col gap-2 text-ink-soft">
+      <p>{rec.reason}</p>
+      {rec.channel && (
+        <p>
+          <span className="font-semibold text-ink">Channel: </span>
+          {rec.channel}
+        </p>
+      )}
+      {rec.legal_basis && (
+        <p>
+          <span className="font-semibold text-ink">Legal basis: </span>
+          {rec.legal_basis}
+        </p>
+      )}
+      {rec.options && rec.options.length > 0 && (
+        <div>
+          <div className="font-semibold text-ink">Freeze routes — officer chooses:</div>
+          <ul className="list-disc pl-5">
+            {rec.options.map((o) => (
+              <li key={o.instrument}>
+                <span className="text-ink">{o.label}</span> — {o.when}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 

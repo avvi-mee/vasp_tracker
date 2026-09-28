@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { addToWatchlist, type Candidate, type Edge } from "@/lib/api";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
+import { inrLabel, type InrRates } from "@/lib/inr";
+import { riskStyle } from "@/components/ui";
 import type { GraphSelection } from "@/components/InvestigationGraph";
 
 /** One consistent "inspect anything" interaction — clicking a graph node,
@@ -14,12 +16,20 @@ export function DetailDrawer({
   edges,
   chain,
   onClose,
+  inrRates = {},
+  sanctionedByChainalysis,
 }: {
   selection: GraphSelection | null;
   candidates: Candidate[];
   edges: Edge[];
   chain: string;
   onClose: () => void;
+  inrRates?: InrRates;
+  /** Addresses listed by either Chainalysis source, unioned by the caller.
+   *  null = neither was consulted. Kept nullable rather than defaulted to []
+   *  so this can say "not checked" instead of implying a clean result it
+   *  never obtained. */
+  sanctionedByChainalysis?: string[] | null;
 }) {
   if (!selection) return null;
   return (
@@ -32,9 +42,16 @@ export function DetailDrawer({
           Close ✕
         </button>
         {selection.kind === "node" ? (
-          <NodeDetail address={selection.address} candidates={candidates} edges={edges} chain={chain} />
+          <NodeDetail
+            address={selection.address}
+            candidates={candidates}
+            edges={edges}
+            chain={chain}
+            inrRates={inrRates}
+            sanctionedByChainalysis={sanctionedByChainalysis ?? null}
+          />
         ) : (
-          <EdgeDetail edge={selection.edge} />
+          <EdgeDetail edge={selection.edge} inrRates={inrRates} />
         )}
       </div>
     </div>
@@ -48,11 +65,15 @@ function NodeDetail({
   candidates,
   edges,
   chain,
+  inrRates,
+  sanctionedByChainalysis,
 }: {
   address: string;
   candidates: Candidate[];
   edges: Edge[];
   chain: string;
+  inrRates: InrRates;
+  sanctionedByChainalysis: string[] | null;
 }) {
   const [tab, setTab] = useState<Tab>("overview");
   const [watching, setWatching] = useState(false);
@@ -77,9 +98,23 @@ function NodeDetail({
     }
   }
 
+  // Case-insensitive: both Chainalysis sources normalise to lowercase,
+  // graph node ids are not guaranteed to.
+  const onSanctionsList = (sanctionedByChainalysis ?? []).some(
+    (a) => a.toLowerCase() === address.toLowerCase()
+  );
+
   return (
     <div>
       <div className="mb-2 break-all font-mono text-xs text-ink-soft">{address}</div>
+      {onSanctionsList && (
+        <div
+          className="mb-3 rounded border px-2 py-1.5 text-[11px] font-semibold"
+          style={{ color: riskStyle("high").fg, background: riskStyle("high").bg, borderColor: riskStyle("high").line }}
+        >
+          Listed by Chainalysis sanctions data (US/EU/UN designations).
+        </div>
+      )}
       <button
         onClick={handleWatch}
         disabled={watching}
@@ -130,7 +165,9 @@ function NodeDetail({
                 {(e.from === address ? e.to : e.from).slice(0, 10)}…
               </div>
               <div className="text-ink-soft">
-                {e.amount} {e.asset} {e.timestamp ? `· ${new Date(e.timestamp * 1000).toLocaleDateString()}` : ""}
+                {e.amount} {e.asset}
+                {inrLabel(e.amount, e.asset, inrRates) && ` · ${inrLabel(e.amount, e.asset, inrRates)}`}
+                {e.timestamp ? ` · ${new Date(e.timestamp * 1000).toLocaleDateString()}` : ""}
               </div>
             </div>
           ))}
@@ -152,13 +189,14 @@ function NodeDetail({
   );
 }
 
-function EdgeDetail({ edge }: { edge: Edge }) {
+function EdgeDetail({ edge, inrRates }: { edge: Edge; inrRates: InrRates }) {
+  const inr = inrLabel(edge.amount, edge.asset, inrRates);
   return (
     <div className="flex flex-col gap-3">
       <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Transaction</div>
       <Field label="From" value={edge.from} mono />
       <Field label="To" value={edge.to} mono />
-      <Field label="Amount" value={`${edge.amount ?? "—"} ${edge.asset ?? ""}`} />
+      <Field label="Amount" value={`${edge.amount ?? "—"} ${edge.asset ?? ""}${inr ? ` · ${inr}` : ""}`} />
       <Field label="Time" value={edge.timestamp ? new Date(edge.timestamp * 1000).toLocaleString() : "—"} />
       <Field label="Block" value={edge.block_number != null ? String(edge.block_number) : "—"} />
       <Field label="Tx hash" value={edge.tx_hash ?? "—"} mono />

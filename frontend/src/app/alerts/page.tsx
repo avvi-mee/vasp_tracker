@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
   addToWatchlist,
+  checkAllWatchlist,
   checkWatchlistEntry,
   getWatchlist,
+  getWatchlistMonitor,
   removeFromWatchlist,
   updateWatchlistStatus,
   type WatchlistEntry,
+  type WatchlistMonitor,
 } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
@@ -32,14 +35,32 @@ function AlertsContent({ officer }: { officer: Officer }) {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [adding, setAdding] = useState(false);
+  const [monitor, setMonitor] = useState<WatchlistMonitor | null>(null);
+  const [sweeping, setSweeping] = useState(false);
 
   function reload() {
     getWatchlist()
       .then(setEntries)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load watchlist"));
+    // Best-effort: an older API without this route should still render the
+    // list rather than blanking the page over a status line.
+    getWatchlistMonitor().then(setMonitor).catch(() => {});
   }
 
   useEffect(reload, []);
+
+  async function handleSweep() {
+    setSweeping(true);
+    setError(null);
+    try {
+      setMonitor(await checkAllWatchlist());
+      reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Sweep failed");
+    } finally {
+      setSweeping(false);
+    }
+  }
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -75,12 +96,38 @@ function AlertsContent({ officer }: { officer: Officer }) {
 
   return (
     <AppShell officer={officer} title="Alerts" subtitle="Watchlist addresses and what changed on them">
-      <p className="mb-4 max-w-2xl text-xs text-ink-soft">
-        Addresses under recurring watch. &quot;Check now&quot; re-runs a real trace — there&apos;s no
-        scheduler yet, so nothing re-checks itself automatically. An alert opens only when risk
-        actually worsens or the attributed entity changes since the last check, never on a routine
-        &quot;still fine&quot; result.
+      <p className="mb-3 max-w-2xl text-xs text-ink-soft">
+        Addresses under recurring watch. &quot;Check now&quot; re-runs a real trace. An alert opens
+        only when risk actually worsens or the attributed entity changes since the last check,
+        never on a routine &quot;still fine&quot; result.
       </p>
+
+      {/* Says which mode this is actually in. Unattended sweeping is off
+          unless WATCHLIST_INTERVAL_MINUTES is set on the API, because every
+          sweep re-traces every watched address against rate-limited free-tier
+          explorers — so claiming continuous monitoring without checking would
+          be claiming something that is usually not running. */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-md border border-wire bg-ledger-soft/50 px-3 py-2 text-xs">
+        <span className="font-semibold text-ink">
+          {monitor?.enabled
+            ? `Auto-check: every ${monitor.interval_minutes} min`
+            : "Auto-check: off — nothing re-checks itself"}
+        </span>
+        {monitor?.last_sweep_at != null && (
+          <span className="text-ink-soft">
+            Last sweep {new Date(monitor.last_sweep_at * 1000).toLocaleString()} ·{" "}
+            {monitor.last_sweep_checked} checked
+            {monitor.last_sweep_errors > 0 ? `, ${monitor.last_sweep_errors} failed` : ""}
+          </span>
+        )}
+        <button
+          onClick={handleSweep}
+          disabled={sweeping || entries.length === 0}
+          className="ml-auto rounded border border-wire-strong px-2 py-1 font-semibold text-ink disabled:opacity-50"
+        >
+          {sweeping ? "Sweeping…" : "Check all now"}
+        </button>
+      </div>
 
       <form onSubmit={handleAdd} className="mb-6 flex gap-2">
         <input

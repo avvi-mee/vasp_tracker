@@ -101,6 +101,131 @@ export function RiskBadge({ risk }: { risk: RiskAssessment }) {
   );
 }
 
+/** The finding in one paragraph, for whoever opens this without wanting to
+ * read a graph.
+ *
+ * Generated server-side by a deterministic template over the very fields
+ * rendered elsewhere on this page (app/graph/summary.py), so it restates
+ * them and cannot contradict them. Placed first because it is the only part
+ * of the console that answers "is there anything here?" without the reader
+ * needing to know what a hop or an exposure share is.
+ */
+export function PlainSummary({ summary }: { summary: string }) {
+  if (!summary) return null;
+  return (
+    <div className="rounded-lg border border-wire-strong bg-paper-raised px-4 py-3">
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+        In plain language
+      </div>
+      <p className="text-sm leading-relaxed text-ink">{summary}</p>
+    </div>
+  );
+}
+
+/** Which sanctions sources were actually consulted for this trail, and what
+ * each one said.
+ *
+ * Two sources, deliberately shown separately rather than merged into one
+ * verdict. The local OFAC SDN snapshot ships with the build, so it always
+ * answers but is only as current as this copy of it. The Chainalysis
+ * on-chain sanctions oracle is read live from chain at query time and covers
+ * EU and UN designations too, but only exists on EVM chains — so on Bitcoin,
+ * Tron and Solana it has no answer at all.
+ *
+ * That third state is the reason this panel exists. "We checked and found
+ * nothing" and "we could not check" are different claims, and a tool whose
+ * output ends up in a s.63 BSA certificate should never let the second one
+ * read as the first.
+ */
+function ScreeningRow({
+  source,
+  listed,
+  cleanNote,
+  silentNote,
+}: {
+  source: string;
+  /** null = not consulted. Never rendered as a clean result. */
+  listed: string[] | null;
+  cleanNote: string;
+  silentNote: string;
+}) {
+  const hits = listed ?? [];
+  const consulted = listed !== null;
+  return (
+    <li className="flex flex-wrap items-baseline gap-x-2">
+      {/* "unknown" is the palette's NOT ASSESSED tone — the right colour for
+          a source that had no answer, rather than a neutral one that reads
+          as a clean result. */}
+      <Badge tone={hits.length > 0 ? "high" : consulted ? "neutral" : "unknown"}>{source}</Badge>
+      <span
+        className={hits.length > 0 ? "font-semibold" : "text-ink-soft"}
+        style={hits.length > 0 ? { color: riskStyle("high").fg } : undefined}
+      >
+        {hits.length > 0
+          ? `lists ${hits.length} address${hits.length === 1 ? "" : "es"} on this trail`
+          : consulted
+            ? cleanNote
+            : silentNote}
+      </span>
+    </li>
+  );
+}
+
+export function SanctionsScreening({
+  oracleSanctioned,
+  apiSanctioned,
+  chain,
+}: {
+  oracleSanctioned: string[] | null;
+  apiSanctioned: string[] | null;
+  chain: string;
+}) {
+  const listed = Array.from(new Set([...(oracleSanctioned ?? []), ...(apiSanctioned ?? [])])).sort();
+  const noChainalysis = oracleSanctioned === null && apiSanctioned === null;
+  return (
+    <div className="rounded-lg border border-wire bg-ledger-soft/50 px-3 py-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+        Sanctions screening
+      </div>
+      <ul className="mt-1.5 flex flex-col gap-1 text-xs">
+        <li className="flex flex-wrap items-baseline gap-x-2">
+          <Badge tone="neutral">OFAC SDN (local snapshot)</Badge>
+          <span className="text-ink-soft">
+            consulted — as current as this build&rsquo;s copy of the list
+          </span>
+        </li>
+        <ScreeningRow
+          source="Chainalysis on-chain oracle"
+          listed={oracleSanctioned}
+          cleanNote="consulted live — no listed address on this trail"
+          silentNote={`not consulted — no oracle deployment on ${chain}, or part of the trail could not be screened`}
+        />
+        <ScreeningRow
+          source="Chainalysis Screening API"
+          listed={apiSanctioned}
+          cleanNote="consulted — no listed address on this trail"
+          silentNote="not consulted — no API key configured for this deployment"
+        />
+      </ul>
+      {noChainalysis && (
+        <p className="mt-1.5 text-[11px] leading-relaxed text-ink-soft">
+          Neither Chainalysis source answered for this trail, so only the local OFAC snapshot
+          screened it — US designations only, and only as fresh as this build. That is narrower
+          coverage than this panel might otherwise suggest, and absence of a hit is not evidence
+          of absence.
+        </p>
+      )}
+      {listed.length > 0 && (
+        <div className="mt-1.5 flex flex-col gap-0.5">
+          {listed.map((a) => (
+            <Address key={a} value={a} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const SEVERITY_ORDER = ["high", "medium", "low"] as const;
 
 /** Laundering typologies — the part of the problem statement that had no
@@ -242,9 +367,19 @@ function humanizeSeconds(seconds: number | null): string {
 export function DepositCallout({ deposit }: { deposit: DepositEvidence }) {
   return (
     <Card
-      title="Deposit address identified"
-      subtitle="The hop before the exchange maps to one KYC'd account — name this address in the disclosure request, not the exchange's hot wallet"
-      action={<Badge tone={deposit.confidence >= 0.8 ? "none" : "medium"}>{(deposit.confidence * 100).toFixed(0)}% confidence</Badge>}
+      title={deposit.is_deposit_address ? "Deposit address identified" : "Deposit-address check: not matched"}
+      subtitle={
+        deposit.is_deposit_address
+          ? "The hop before the exchange maps to one KYC'd account — name this address in the disclosure request, not the exchange's hot wallet"
+          : "The hop before the exchange did not behave like a customer deposit address — name the exchange wallet and the transaction hashes instead"
+      }
+      action={
+        deposit.is_deposit_address ? (
+          <Badge tone={deposit.confidence >= 0.8 ? "none" : "medium"}>{(deposit.confidence * 100).toFixed(0)}% confidence</Badge>
+        ) : (
+          <Badge tone="medium">not a deposit pattern</Badge>
+        )
+      }
     >
       <Address value={deposit.address} className="text-xs" />
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">

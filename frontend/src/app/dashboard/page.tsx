@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type Case, getCases, getCoverage } from "@/lib/api";
+import { type Case, type LinkCluster, getCases, getCoverage, getLinkClusters } from "@/lib/api";
 import type { Officer } from "@/lib/auth";
 import { entityColor, entityPlainLabel } from "@/lib/entityColors";
 import { AuthGuard } from "@/components/AuthGuard";
@@ -18,10 +18,12 @@ function DashboardContent({ officer }: { officer: Officer }) {
   const [cases, setCases] = useState<Case[]>([]);
   const [coverage, setCoverage] = useState<Record<string, number>>({});
   const [quickAddress, setQuickAddress] = useState("");
+  const [clusters, setClusters] = useState<LinkCluster[]>([]);
 
   useEffect(() => {
     getCases().then(setCases).catch(() => {});
     getCoverage().then(setCoverage).catch(() => {});
+    getLinkClusters().then(setClusters).catch(() => {});
   }, []);
 
   const stats = useMemo(
@@ -64,6 +66,41 @@ function DashboardContent({ officer }: { officer: Officer }) {
         <Tile label="Chains covered" value={String(stats.chains)} />
         <Tile label="SAHYOG in progress" value={String(stats.pendingSahyog)} />
       </div>
+
+      <section className="mb-6">
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+          Linked complaints — addresses shared across cases
+        </h3>
+        <p className="mb-2 text-xs text-ink-soft">
+          A shared exchange deposit address means the same KYC&apos;d account received money from separate
+          complaints: one notice can answer all of them.
+        </p>
+        <div className="flex flex-col gap-2">
+          {clusters.map((cl) => (
+            <div
+              key={`${cl.chain}:${cl.address}`}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-wire bg-paper-raised px-3 py-2 text-xs"
+            >
+              <span className="font-mono">
+                {cl.address.slice(0, 10)}…{cl.address.slice(-6)} · {cl.chain}
+              </span>
+              <span className={cl.roles.includes("deposit") ? "font-semibold text-navy" : "text-ink-soft"}>
+                {cl.roles.includes("deposit") ? "Same beneficiary" : "Shared hop"} · {cl.case_count} cases
+              </span>
+              <span className="flex gap-2">
+                {cl.case_ids.map((id) => (
+                  <Link key={id} href={`/cases/${id}`} className="text-navy underline">
+                    #{id}
+                  </Link>
+                ))}
+              </span>
+            </div>
+          ))}
+          {clusters.length === 0 && (
+            <div className="text-xs text-ink-soft">No address is shared by two cases yet.</div>
+          )}
+        </div>
+      </section>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <section>

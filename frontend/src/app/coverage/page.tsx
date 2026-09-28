@@ -86,6 +86,60 @@ function CoverageContent({ officer }: { officer: Officer }) {
         </div>
       </Section>
 
+      <Section title="Sanctions screening — two sources, and where each one stops">
+        <p className="mb-2 text-xs leading-relaxed text-ink-soft">
+          A trail is screened against two independent sanctions sources. They are reported
+          separately rather than merged, because they fail in different ways and an officer is
+          entitled to know which one actually answered.
+        </p>
+        <div className="overflow-x-auto rounded-md border border-wire">
+          <table className="w-full text-left text-xs">
+            <thead className="bg-ledger-soft text-ink-soft">
+              <tr>
+                <th className="px-2 py-1.5 font-medium">Source</th>
+                <th className="px-2 py-1.5 font-medium">Lists</th>
+                <th className="px-2 py-1.5 font-medium">Chains</th>
+                <th className="px-2 py-1.5 font-medium">Freshness</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5 text-ink-soft">Vendored OFAC SDN snapshot</td>
+                <td className="px-2 py-1.5 text-ink-soft">US Treasury SDN only</td>
+                <td className="px-2 py-1.5 text-ink-soft">Ethereum, Polygon, Bitcoin, Tron, Solana, BNB Chain</td>
+                <td className="px-2 py-1.5 text-ink-soft">As current as this build&apos;s copy of the list. Works offline; can be stale.</td>
+              </tr>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5 text-ink-soft">Chainalysis on-chain sanctions oracle</td>
+                <td className="px-2 py-1.5 text-ink-soft">US, EU and UN designations</td>
+                <td className="px-2 py-1.5 text-ink-soft">Ethereum, Polygon, BNB Chain (EVM only)</td>
+                <td className="px-2 py-1.5 text-ink-soft">Read live from chain at query time. Unavailable if the RPC is down.</td>
+              </tr>
+              <tr className="border-t border-wire">
+                <td className="px-2 py-1.5 text-ink-soft">Chainalysis Sanctions Screening API</td>
+                <td className="px-2 py-1.5 text-ink-soft">US, EU and UN designations, with the designation text</td>
+                <td className="px-2 py-1.5 text-ink-soft">All six — including Bitcoin, Tron and Solana</td>
+                <td className="px-2 py-1.5 text-ink-soft">Read at query time. Requires an API key; reports &ldquo;not consulted&rdquo; without one.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+          The oracle is Chainalysis&apos;s own <code>isSanctioned(address)</code> contract, queried
+          directly over a public RPC — free, no API key, no vendor agreement. The Screening API is
+          the other half of what Chainalysis gives away: it needs a key, but it reaches the three
+          chains the oracle cannot. Everything else Chainalysis sells (Reactor, KYT, Rapid, Wallet
+          Scan) is licensed and is not used here.
+        </p>
+        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+          Each source reports its own result, and a source that could not answer says so rather
+          than staying silent. <strong>A trail with no hit from a source that was never consulted
+          has not been cleared by it</strong> — it was never shown to it, and the two are not the
+          same claim. This also applies when only part of a trail could be screened: a partial
+          result is reported as not consulted, never as a clean pass.
+        </p>
+      </Section>
+
       <Section title="Where a label comes from, and what it is worth">
         <p className="mb-2 text-xs leading-relaxed text-ink-soft">
           Attribution draws on three sources of different quality, and the verdict always names which
@@ -111,8 +165,12 @@ function CoverageContent({ officer }: { officer: Officer }) {
               </tr>
               <tr className="border-t border-wire">
                 <td className="px-2 py-1.5">GraphSense TagPacks</td>
-                <td className="px-2 py-1.5 font-mono">varies</td>
-                <td className="px-2 py-1.5">Community-curated, versioned and citable, but stale on live addresses.</td>
+                <td className="px-2 py-1.5 font-mono">0.40 &ndash; 0.95</td>
+                <td className="px-2 py-1.5">
+                  Community-curated, versioned and citable, but stale on live addresses. Each pack states
+                  how its labels were obtained: authority data 0.95, forensic 0.90, service or ledger data
+                  0.85, web crawl 0.60, untrusted transaction 0.40 (unstated: 0.70).
+                </td>
               </tr>
               <tr className="border-t border-wire">
                 <td className="px-2 py-1.5">Block explorer address tags</td>
@@ -127,6 +185,12 @@ function CoverageContent({ officer }: { officer: Officer }) {
             </tbody>
           </table>
         </div>
+        <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+          Attribution confidence = distance score &times; (label confidence &divide; 0.95). The distance
+          score is 0.90 &minus; 0.15 per hop (+0.05 for a cluster-defining label), kept between 0.30 and
+          0.95. So a 0.60 explorer tag one hop away scores 0.47, while a 0.95 operator-confirmed address
+          at the same distance scores 0.75.
+        </p>
         <p className="mt-2 text-xs leading-relaxed text-ink-soft">
           Explorers also publish a per-address risk flag with no stated reasoning. It is used only as
           corroboration — it can raise an unattributed trail from low to medium and is recorded as such,

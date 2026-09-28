@@ -38,8 +38,9 @@ logger = logging.getLogger("vasp_trace.api")
 from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
 from app.data.case_store import (
-    add_upi_hop, delete_upi_hop, get_case, get_officer_by_username, init_db, list_case_events,
-    list_cases, list_upi_hops, log_action, save_case, save_sahyog_draft, update_case_legal_refs,
+    add_upi_hop, delete_upi_hop, find_linked_cases, get_case, get_officer_by_username, init_db,
+    list_case_events, list_cases, list_link_clusters, list_upi_hops, log_action, save_case,
+    save_sahyog_draft, update_case_legal_refs,
     update_case_status, update_case_tags, update_sahyog_status,
 )
 from app.data.indian_vasps import coverage_summary, merge_labels
@@ -483,6 +484,23 @@ def case_detail(case_id: int, officer: Officer = Depends(get_current_officer)):
         case["events"] = events_future.result()
         case["upi_hops"] = hops_future.result()
     return case
+
+
+@app.get("/v1/cases/{case_id}/linked")
+def linked_cases(case_id: int, officer: Officer = Depends(get_current_officer)):
+    """Other complaints that share a deposit address, seed or hop with this
+    case — the same beneficiary behind separate FIRs."""
+    _require_case(case_id)
+    return find_linked_cases(case_id)
+
+
+@app.get("/v1/links")
+def link_clusters(limit: int = 20, officer: Officer = Depends(get_current_officer)):
+    """Addresses shared by 2+ cases, deposit addresses first — for the dashboard."""
+    try:
+        return list_link_clusters(limit=limit)
+    except Exception as exc:
+        raise HTTPException(503, f"Case database unreachable: {exc}")
 
 
 class CaseUpdateRequest(BaseModel):

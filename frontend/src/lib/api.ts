@@ -123,8 +123,25 @@ export interface TraceResultJson {
   seed_exposure: SeedExposure;
   typologies: Typology[];
   explorer_flagged: string[];
+  /** Addresses on a followed path that the Chainalysis on-chain sanctions
+   *  oracle lists. null means the oracle was NOT consulted — non-EVM chain,
+   *  or the endpoint was unreachable — which is not the same as clean, and
+   *  must not be rendered as though it were. */
+  oracle_sanctioned: string[] | null;
+  /** Same, from Chainalysis's Sanctions Screening API. Separate field
+   *  because the two sources have different reach — the oracle is EVM-only,
+   *  this one covers every chain but needs an API key — so which of them
+   *  answered is itself information. null = not consulted. */
+  api_sanctioned: string[] | null;
   max_hops: number;
   wallet_activity: WalletActivity;
+  /** { ASSET_SYMBOL: rupees per whole unit }. Empty when the price feed is
+   *  unreachable; the UI then shows token units alone. See app/prices.py. */
+  inr_rates: Record<string, number>;
+  /** The whole finding restated as one paragraph, generated from the fields
+   *  above by a deterministic template (app/graph/summary.py) — not a model,
+   *  so it can never assert something the rest of this object does not. */
+  summary: string;
 }
 
 export interface RiskAssessment {
@@ -274,8 +291,52 @@ export const updateCase = (
   patch: Partial<Pick<Case, "status" | "tags" | "ncrp_ack_number" | "cctns_fir_number">>
 ) => request<CaseDetail>(`/v1/cases/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 
-export const generateSahyogDraft = (id: number) =>
-  request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "POST" });
+export type LinkStrength = "same_beneficiary" | "same_wallet" | "shared_intermediary";
+
+export interface LinkedCase {
+  case_id: number;
+  seed_address: string;
+  chain: string;
+  label: string | null;
+  ncrp_ack_number: string | null;
+  cctns_fir_number: string | null;
+  status: string;
+  created_at: string;
+  strength: LinkStrength;
+  shared: { address: string; my_role: string; their_role: string }[];
+}
+
+export interface LinkCluster {
+  chain: string;
+  address: string;
+  roles: string[];
+  case_count: number;
+  case_ids: number[];
+}
+
+export const getLinkedCases = (id: number) => request<LinkedCase[]>(`/v1/cases/${id}/linked`);
+
+export const getLinkClusters = (limit = 20) => request<LinkCluster[]>(`/v1/links?limit=${limit}`);
+
+export type SahyogRequestType = "disclosure" | "freeze";
+
+/** What the backend's recommend_instrument() returns inside a draft. */
+export interface RecommendedInstrument {
+  instrument: string;
+  label: string;
+  reason: string;
+  request_type?: SahyogRequestType;
+  state?: string | null;
+  channel?: string;
+  legal_basis?: string;
+  options?: { instrument: string; label: string; when: string }[];
+}
+
+export const generateSahyogDraft = (id: number, requestType: SahyogRequestType = "disclosure", state?: string) =>
+  request<CaseDetail>(`/v1/cases/${id}/sahyog`, {
+    method: "POST",
+    body: JSON.stringify({ request_type: requestType, state: state || null }),
+  });
 
 export const updateSahyogStatus = (id: number, status: string) =>
   request<CaseDetail>(`/v1/cases/${id}/sahyog`, { method: "PATCH", body: JSON.stringify({ status }) });
@@ -301,6 +362,23 @@ export interface WatchlistEntry {
 }
 
 export const getWatchlist = () => request<WatchlistEntry[]>("/v1/watchlist");
+
+/** Whether unattended re-checking is actually running. The Alerts page shows
+ *  this rather than assuming: a list that looks live but is only refreshed by
+ *  hand is worse than one that says so. */
+export interface WatchlistMonitor {
+  enabled: boolean;
+  interval_minutes: number;
+  /** Unix seconds, null until the first sweep completes. */
+  last_sweep_at: number | null;
+  last_sweep_checked: number;
+  last_sweep_errors: number;
+}
+
+export const getWatchlistMonitor = () => request<WatchlistMonitor>("/v1/watchlist/monitor");
+
+export const checkAllWatchlist = () =>
+  request<WatchlistMonitor>("/v1/watchlist/check-all", { method: "POST" });
 
 export const addToWatchlist = (address: string, chain?: string) =>
   request<WatchlistEntry>("/v1/watchlist", { method: "POST", body: JSON.stringify({ address, chain }) });
