@@ -508,14 +508,24 @@ def update_case(case_id: int, req: CaseUpdateRequest, officer: Officer = Depends
     return get_case(case_id)
 
 
+class SahyogDraftRequest(BaseModel):
+    # Disclosure (KYC / records) and freeze are different instruments —
+    # s.94 cannot freeze. The state picks the freeze route (2026 HC split).
+    request_type: Literal["disclosure", "freeze"] = "disclosure"
+    state: str | None = None
+
+
 @app.post("/v1/cases/{case_id}/sahyog")
-def generate_sahyog_draft(case_id: int, officer: Officer = Depends(get_current_officer)):
+def generate_sahyog_draft(case_id: int, req: SahyogDraftRequest | None = None,
+                          officer: Officer = Depends(get_current_officer)):
     """(Re)generates the disclosure-request draft for an existing case —
     always resets its status to 'draft', since a fresh draft supersedes
     whatever submission state the old one was in."""
+    req = req or SahyogDraftRequest()
     case = _require_case(case_id)
     result, risk = _case_to_trace_and_risk(case)
-    draft = build_disclosure_request(case["chain"], result, risk)
+    draft = build_disclosure_request(case["chain"], result, risk,
+                                     request_type=req.request_type, state=req.state)
     save_sahyog_draft(case_id, draft["recommended_instrument"]["instrument"], draft, officer.id)
     return get_case(case_id)
 

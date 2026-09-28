@@ -37,16 +37,18 @@ def test_registered_exchange_recommends_s94():
     assert rec["instrument"] == "s94_bnss"
 
 
-def test_high_risk_exchange_recommends_s107():
+def test_high_risk_alone_does_not_turn_a_disclosure_into_a_freeze():
+    """Old rule sent any high-risk exchange to s.107 attachment — the request
+    type decides disclosure vs freeze now, not the risk level (tests/test_routing.py)."""
     result, risk = _fake_case(compliance_status="unknown", risk_level="high")
     rec = recommend_instrument(result, risk)
-    assert rec["instrument"] == "s107_bnss"
+    assert rec["instrument"] == "s94_bnss"
 
 
-def test_non_compliant_vasp_recommends_pmla():
-    result, risk = _fake_case(compliance_status="flagged_non_compliant", risk_level="medium")
+def test_non_compliant_vasp_goes_via_letter_of_request():
+    result, risk = _fake_case(label="Kraken 4", compliance_status="flagged_non_compliant", risk_level="medium")
     rec = recommend_instrument(result, risk)
-    assert rec["instrument"] == "pmla_s5"
+    assert rec["instrument"] == "lor_mlat"
 
 
 def test_no_specific_signal_falls_back_to_s63():
