@@ -46,6 +46,7 @@ from app.data.case_store import (
     update_case_status, update_case_tags, update_sahyog_status,
 )
 from app.data.indian_vasps import coverage_summary, merge_labels
+from app.data.bridges import load_bridges
 from app.data.known_mixers import KNOWN_MIXERS
 from app.data.tagpacks import load_labels
 from app.data.watchlist_store import (
@@ -211,7 +212,9 @@ def _labels() -> dict:
     # TagPacks dataset on every request.
     global _labels_cache
     if _labels_cache is None:
-        _labels_cache = merge_labels(load_labels())
+        # Bridge rows replace GraphSense's on the same address (an official contract list
+        # beats a crawl); the Indian VASP dataset still wins over both.
+        _labels_cache = merge_labels({**load_labels(), **load_bridges()})
     return _labels_cache
 
 

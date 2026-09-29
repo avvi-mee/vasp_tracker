@@ -42,6 +42,9 @@ DARKNET_MARKET_CATEGORIES = {"market"}
 # "illicit" is what chain_native_labels.entity_category() assigns to abuse-
 # tagged and hack/scam-worded labels; "black_list" is GraphSense's own.
 ILLICIT_CATEGORIES = {"illicit", "black_list"}
+# Terminals where funds leave this chain: the trace ends at the bridge or swapper,
+# but the money does not — it resurfaces elsewhere.
+CHAIN_HOP_CATEGORIES = {"bridge", "swap_service"}
 # Same bar trace.py uses for "material" — a branch this big was followed on
 # purpose, so what it reached counts.
 SIDE_BRANCH_SHARE = 0.10
@@ -186,6 +189,26 @@ def _assess_trail(trace_result) -> RiskAssessment:
                 risk_reason=(f"{c.value_share:.0%} of the traced value reached {c.label} ({c.entity_type}) "
                              f"on a side branch, while the main path reached "
                              f"{trace_result.label or 'no named entity'}."),
+            )
+
+    # 3e. Chain-hop — the primary path, or a material side branch, ends at a bridge or an
+    #     instant-swap service. Not evidence of wrongdoing (bridges are ordinary), but it is
+    #     exactly where a single-chain trace goes blind, so the officer has to be told the
+    #     trail continues. Medium, never lower: a "no risk" verdict here would be false comfort.
+    for c in getattr(trace_result, "candidates", None) or ():
+        category = (c.entity_type or "").lower()
+        if category in CHAIN_HOP_CATEGORIES and (c.path == trace_result.path or c.value_share >= SIDE_BRANCH_SHARE):
+            swap = category == "swap_service"
+            compliance = check_compliance(c.label) if swap else None
+            return RiskAssessment(
+                compliance_status=compliance["status"] if swap else "n/a",
+                compliance_detail=(compliance["detail"] if swap else
+                                   "Trail leads to a cross-chain bridge, not a VASP account — the funds "
+                                   "continue on another chain."),
+                risk_flag=True, risk_level="medium",
+                risk_reason=(f"Chain-hop: {c.value_share:.0%} of the traced value went through {c.label}, "
+                             f"so the funds continue on another chain and this trace stops here. "
+                             f"Resolve the destination and continue the trace there."),
             )
 
     # 4. Labeled exchange — severity follows its FIU-IND compliance status.

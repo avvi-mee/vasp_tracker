@@ -1,0 +1,31 @@
+chain,address,name,kind,source
+ETH,0xA0c68C638235ee32657e8f720a23ceC1bFc77C77,Polygon PoS bridge: RootChainManager,bridge,https://static.polygon.technology/network/mainnet/v1/index.json
+ETH,0x40ec5B33f54e0E8A33A975908C5BA1c14e5BbbDf,Polygon PoS bridge: ERC20 predicate,bridge,https://static.polygon.technology/network/mainnet/v1/index.json
+ETH,0x8484Ef722627bf18ca5Ae6BcF031c23E6e922B30,Polygon PoS bridge: Ether predicate,bridge,https://static.polygon.technology/network/mainnet/v1/index.json
+ETH,0x401F6c983eA34274ec46f84D70b31C151321188b,Polygon PoS bridge: Plasma DepositManager,bridge,https://static.polygon.technology/network/mainnet/v1/index.json
+ETH,0x3ee18B2214AFF97000D974cf647E7C347E8fa585,Wormhole Token Bridge,bridge,https://github.com/wormhole-foundation/wormhole-sdk-ts/blob/main/core/base/src/constants/contracts/tokenBridge.ts
+BNB,0xB6F6D86a8f9879A9c87f643768d9efc38c1Da6E7,Wormhole Token Bridge,bridge,https://github.com/wormhole-foundation/wormhole-sdk-ts/blob/main/core/base/src/constants/contracts/tokenBridge.ts
+MATIC,0x5a58505a96D1dbf8dF91cB21B54419FC36e93fdE,Wormhole Token Bridge,bridge,https://github.com/wormhole-foundation/wormhole-sdk-ts/blob/main/core/base/src/constants/contracts/tokenBridge.ts
+ETH,0x783129E4d7bA0Af0C896c239E57C06DF379aAE8c,Stargate V2: EURC pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolEURC.json
+ETH,0xcDafB1b2dB43f366E48e6F614b8DCCBFeeFEEcD3,Stargate V2: METIS pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolMETIS.json
+ETH,0x77b2043768d28E9C9aB44E1aBfC95944bcE57931,Stargate V2: Native pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolNative.json
+ETH,0xc026395860Db2d07ee33e05fE50ed7bD583189C7,Stargate V2: USDC pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolUSDC.json
+ETH,0x933597a323Eb81cAe705C5bC29985172fd5A3973,Stargate V2: USDT pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolUSDT.json
+ETH,0x268Ca24DAefF1FaC2ed883c598200CcbB79E931D,Stargate V2: mETH pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/ethereum-mainnet/StargatePoolmETH.json
+BNB,0x962Bd449E630b0d928f308Ce63f1A21F02576057,Stargate V2: USDC pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/bsc-mainnet/StargatePoolUSDC.json
+BNB,0x138EB30f73BC423c6455C53df6D89CB01d9eBc63,Stargate V2: USDT pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/bsc-mainnet/StargatePoolUSDT.json
+MATIC,0x9Aa02D4Fae7F58b8E8f34c66E756cC734DAc7fe4,Stargate V2: USDC pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/polygon-mainnet/StargatePoolUSDC.json
+MATIC,0xd47b03ee6d86Cf251ee7860FB2ACf9f91B9fD4d7,Stargate V2: USDT pool,bridge,https://github.com/stargate-protocol/stargate-v2/blob/main/packages/stg-evm-v2/deployments/polygon-mainnet/StargatePoolUSDT.json
+ETH,0x609c690e8F7D68a59885c9132e812eEbDaAf0c9e,Allbridge Core: bridge,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+BNB,0x3C4FA639c8D7E65c603145adaD8bD12F2358312f,Allbridge Core: bridge,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+TRX,TAuErcuAtU6BPt6YwL51JZ4RpDCPQASCU2,Allbridge Core: bridge,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+SOL,BrdgN2RPzEMWF96ZbnnJaUtQDQx7VRXYaHHbYCBvceWB,Allbridge Core: bridge,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+MATIC,0x7775d63836987f444E2F14AA0fA2602204D7D3E0,Allbridge Core: bridge,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+TRX,TWPziSAroSacAjDuL52ByQzU86s9mP2gPr,Allbridge Core: USDT0 OFT interface,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+BNB,0xf833afA46fCD100e62365a0fDb0734b7c4537811,Allbridge Core: USDT pool,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+ETH,0xa7062bbA94c91d565Ae33B893Ab5dFAF1Fc57C4d,Allbridge Core: USDC pool,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+MATIC,0x4C42DfDBb8Ad654b42F66E0bD4dbdC71B52EB0A6,Allbridge Core: USDC pool,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+SOL,5NQbhSDg4TKVvq7z3PTbqSzAiHwB7amxmxqkViQnyVnZ,Allbridge Core: USDC pool,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+TRX,TAC21biCBL9agjuUyzd4gZr356zRgJq61b,Allbridge Core: USDT pool,bridge,https://docs-core.allbridge.io/product/how-does-allbridge-core-work/allbridge-core-contracts
+BNB,0xb30ec53f98ff5947ede720d32ac2da7e52a5f56b,THORChain router,bridge,https://thornode.ninerealms.com/thorchain/inbound_addresses
+ETH,0xD37BbE5744D730a1d98d8DC97c42F0Ca46aD7146,THORChain router,bridge,https://thornode.ninerealms.com/thorchain/inbound_addresses

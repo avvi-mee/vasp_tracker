@@ -49,7 +49,10 @@ CATEGORY_KEYWORDS: tuple[tuple[tuple[str, ...], str], ...] = (
     # victim exchange, but the address belongs to the thief.
     (("phish", "scam", "fake", "hack", "exploit", "fraud", "ransom", "stolen", "heist"), "illicit"),
     (("tornado", "mixer", "mixing", "tumbler", "blender"), "mixer"),
-    (("bridge",), "bridge"),
+    # "stargate" contains "gate", so this has to come before the exchange names.
+    (("bridge", "stargate", "thorchain"), "bridge"),
+    (("changenow", "simpleswap", "fixedfloat", "changelly", "sideshift", "exch.cx", "swapzone",
+      "godex", "letsexchange", "stealthex"), "swap_service"),
     (("binance", "okx", "okex", "huobi", "htx", "bybit", "gate", "mexc", "mxc",
       "kucoin", "poloniex", "bitfinex", "kraken", "coinbase", "bitget", "bitmart",
       "whitebit", "coinex", "crypto.com", "upbit", "bithumb", "bitkub", "bitstamp",
