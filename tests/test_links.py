@@ -76,5 +76,38 @@ def test_save_case_records_its_link_keys_in_the_same_transaction():
 
     sql, rows = cursor.executemany.call_args[0]
     assert "INSERT INTO case_addresses" in sql
-    assert (42, "Tdep", "TRX", "deposit") in rows
+    assert (42, "Tdep", "TRX", "deposit", "Thot") in rows   # sink = the hot wallet it sweeps into
+    assert (42, "Tseed", "TRX", "seed", None) in rows
     conn.commit.assert_called_once()
+
+
+# --- exchange clusters -------------------------------------------------------
+
+from app.graph.links import confirmed_deposits, exchange_clusters
+from app.graph.trace import Candidate
+
+
+def _cand(path, label, deposit_addr):
+    d = DepositEvidence(address=deposit_addr, vasp_address=path[-1], is_deposit_address=True, confidence=0.9,
+                        forwarded_ratio=0.95, destination_share=1.0, distinct_funders=4, sweep_count=2,
+                        median_hold_seconds=60)
+    return Candidate(path=path, hop_count=len(path) - 1, entity_type="exchange", label=label, confidence=0.8,
+                     source="t", reason=None, asset=None, deposit=d, value_share=0.5)
+
+
+def test_side_branch_deposits_are_link_keys_and_cluster_under_their_hot_wallet():
+    r = _result(["Tseed", "TdepA", "Thot"], deposit_addr="TdepA")
+    r.candidates = [_cand(["Tseed", "TdepA", "Thot"], "Binance-Hot 7", "TdepA"),
+                    _cand(["Tseed", "TdepB", "Thot"], "Binance-Hot 7", "TdepB"),
+                    _cand(["Tseed", "TdepC", "Tokx"], "OKX 3", "TdepC")]
+    keys = case_link_keys(r)
+    assert {("TdepA", "deposit"), ("TdepB", "deposit"), ("TdepC", "deposit")} <= set(keys)
+    assert len(confirmed_deposits(r)) == 3  # TdepA counted once, not twice
+    clusters = exchange_clusters(r)
+    assert clusters[0] == {"hot_wallet": "Thot", "label": "Binance-Hot 7", "deposit_addresses": ["TdepA", "TdepB"]}
+    assert clusters[1]["hot_wallet"] == "Tokx" and clusters[1]["deposit_addresses"] == ["TdepC"]
+
+
+def test_no_confirmed_deposit_means_no_cluster():
+    r = _result(["Tseed", "Thot"])
+    assert exchange_clusters(r) == []

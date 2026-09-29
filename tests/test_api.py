@@ -365,3 +365,13 @@ def test_watchlist_check_sees_behavioural_risk_the_same_way_investigate_does(mon
 
     assert client.post("/v1/watchlist/1/check", headers=AUTH_HEADERS).status_code == 200
     assert recorded["risk_level"] == investigate["risk"]["risk_level"]
+
+
+def test_exchange_clusters_endpoint_and_trace_payload(monkeypatch):
+    client = _client(monkeypatch)
+    monkeypatch.setattr(api_main, "list_exchange_clusters", lambda limit=20: [
+        {"chain": "TRX", "hot_wallet": "Thot", "deposit_addresses": ["TdepA", "TdepB"], "case_ids": [1, 2], "labels": ["Binance-Hot 7"]}])
+    r = client.get("/v1/exchange-clusters", headers=AUTH_HEADERS)
+    assert r.status_code == 200 and r.json()[0]["deposit_addresses"] == ["TdepA", "TdepB"]
+    t = client.post("/v1/trace", json={"address": "0xaaa", "chain": "Ethereum"}, headers=AUTH_HEADERS)
+    assert t.json()["trace"]["exchange_clusters"] == []  # the fake ledger has no deposit address

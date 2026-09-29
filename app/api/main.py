@@ -40,7 +40,7 @@ logger = logging.getLogger("vasp_trace.api")
 from app.auth import create_token, decode_token, verify_password
 from app.chains import CHAINS
 from app.data.case_store import (
-    add_upi_hop, delete_upi_hop, find_linked_cases, get_case, get_officer_by_username, init_db,
+    add_upi_hop, delete_upi_hop, find_linked_cases, get_case, get_officer_by_username, init_db, list_exchange_clusters,
     list_case_events, list_cases, list_link_clusters, list_upi_hops, log_action, mark_sahyog_submitted,
     record_sahyog_event, save_case, save_sahyog_draft, set_case_intake, update_case_legal_refs,
     update_case_status, update_case_tags, update_sahyog_status,
@@ -67,6 +67,7 @@ from app.evidence.certificate import _jsonable, build_certificate_bundle
 from app.graph.chain_detect import detect_chain
 from app.graph.exposure import SeedExposure, compute_exposure, compute_seed_exposure
 from app.graph.risk import RiskAssessment, assess
+from app.graph.links import exchange_clusters
 from app.graph.summary import summarise
 from app.graph.trace import DEFAULT_MAX_HOPS, TraceResult, trace_to_nearest_entity
 from app.graph.typology import detect as detect_typologies
@@ -368,6 +369,7 @@ def _trace_json(result, chain_cfg: dict, typologies=(), seed_txs=(), risk=None, 
     payload = _jsonable(result)
     payload.pop("graph", None)  # str(DiGraph) is noise, not data
     payload["edges"] = _edges(result)
+    payload["exchange_clusters"] = exchange_clusters(result)
     payload["exposure"] = _jsonable(compute_exposure(result, currency, labels, KNOWN_MIXERS))
     payload["typologies"] = [_jsonable(t) for t in typologies]
     try:
@@ -512,6 +514,16 @@ def link_clusters(limit: int = 20, officer: Officer = Depends(get_current_office
     """Addresses shared by 2+ cases, deposit addresses first — for the dashboard."""
     try:
         return list_link_clusters(limit=limit)
+    except Exception as exc:
+        raise HTTPException(503, f"Case database unreachable: {exc}")
+
+
+@app.get("/v1/exchange-clusters")
+def exchange_cluster_list(limit: int = 20, officer: Officer = Depends(get_current_officer)):
+    """Deposit addresses grouped by the exchange hot wallet they sweep into,
+    across every saved case."""
+    try:
+        return list_exchange_clusters(limit=limit)
     except Exception as exc:
         raise HTTPException(503, f"Case database unreachable: {exc}")
 

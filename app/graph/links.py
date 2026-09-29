@@ -20,10 +20,34 @@ def case_link_keys(trace_result) -> list[tuple[str, str]]:
     keys = [(trace_result.seed_address, "seed")]
     end = len(path) - 1 if trace_result.label else len(path)
     keys += [(addr, "path") for addr in path[1:end]]
-    deposit = getattr(trace_result, "deposit", None)
-    if deposit and deposit.is_deposit_address:
-        keys.append((deposit.address, "deposit"))
+    keys += [(d.address, "deposit") for d in confirmed_deposits(trace_result)]
     return list(dict.fromkeys(keys))
+
+
+def confirmed_deposits(trace_result) -> list:
+    """Every confirmed exchange deposit address on the trail — the primary
+    verdict's and any side branch's. A split payment can land in two
+    accounts at the same exchange; both are the same kind of lead."""
+    found = [getattr(trace_result, "deposit", None)]
+    found += [c.deposit for c in (getattr(trace_result, "candidates", None) or [])]
+    by_address = {d.address: d for d in found if d and d.is_deposit_address}
+    return list(by_address.values())
+
+
+def exchange_clusters(trace_result) -> list[dict]:
+    """Deposit addresses on this trail grouped by the exchange hot wallet they
+    sweep into. Each group is one exchange cluster: addresses the same
+    exchange controls. Across cases the same grouping is done in SQL
+    (case_store.list_exchange_clusters) from the `sink` stored per deposit."""
+    labels = {c.path[-1]: c.label for c in (getattr(trace_result, "candidates", None) or []) if c.path}
+    if trace_result.path:
+        labels.setdefault(trace_result.path[-1], trace_result.label)
+    groups: dict[str, dict] = {}
+    for d in confirmed_deposits(trace_result):
+        g = groups.setdefault(d.vasp_address, {"hot_wallet": d.vasp_address, "label": labels.get(d.vasp_address),
+                                               "deposit_addresses": []})
+        g["deposit_addresses"].append(d.address)
+    return sorted(groups.values(), key=lambda g: -len(g["deposit_addresses"]))
 
 
 def _strength(my_role: str, their_role: str) -> str:

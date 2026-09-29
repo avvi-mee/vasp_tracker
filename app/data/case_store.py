@@ -14,7 +14,7 @@ import psycopg2.extras
 import psycopg2.extensions
 import psycopg2.pool
 
-from app.graph.links import case_link_keys, group_linked_rows
+from app.graph.links import case_link_keys, confirmed_deposits, group_linked_rows
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS cases (
@@ -119,6 +119,9 @@ CREATE TABLE IF NOT EXISTS case_addresses (
     PRIMARY KEY (case_id, address, role)
 );
 CREATE INDEX IF NOT EXISTS case_addresses_lookup ON case_addresses (chain, address);
+-- Exchange clusters: the hot wallet a confirmed deposit address sweeps into.
+-- A column, not a link row, so hot wallets never become case-linking keys.
+ALTER TABLE case_addresses ADD COLUMN IF NOT EXISTS sink TEXT;
 
 -- Backfill cases saved before linking existed, from their stored path. Only
 -- touches cases with no rows yet, so re-running on every init_db is cheap.
@@ -230,10 +233,12 @@ def save_case(chain: str, trace_result, risk_assessment, officer_id: int | None 
             case_id = cur.fetchone()[0]
             # executemany, not execute: one round trip's worth of intent, and
             # the case row and its link keys commit together or not at all.
+            sinks = {d.address: d.vasp_address for d in confirmed_deposits(trace_result)}
             cur.executemany(
-                "INSERT INTO case_addresses (case_id, address, chain, role) VALUES (%s, %s, %s, %s) "
+                "INSERT INTO case_addresses (case_id, address, chain, role, sink) VALUES (%s, %s, %s, %s, %s) "
                 "ON CONFLICT DO NOTHING",
-                [(case_id, addr, chain, role) for addr, role in case_link_keys(trace_result)],
+                [(case_id, addr, chain, role, sinks.get(addr) if role == "deposit" else None)
+                 for addr, role in case_link_keys(trace_result)],
             )
         conn.commit()
         if officer_id is not None:
@@ -298,6 +303,34 @@ def list_link_clusters(limit: int = 20, conn=None) -> list[dict]:
                 GROUP BY chain, address
                 HAVING COUNT(DISTINCT case_id) > 1
                 ORDER BY bool_or(role = 'deposit') DESC, COUNT(DISTINCT case_id) DESC
+                LIMIT %s
+                """,
+                (limit,),
+            )
+            return [dict(row) for row in cur.fetchall()]
+    finally:
+        if owns_conn:
+            _release_connection(conn)
+
+
+def list_exchange_clusters(limit: int = 20, conn=None) -> list[dict]:
+    """Exchange clusters across all cases: deposit addresses grouped by the
+    hot wallet they sweep into, biggest first. Each is a set of addresses one
+    exchange controls, and every case in it is served on that exchange."""
+    owns_conn = conn is None
+    conn = conn or get_connection()
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT a.chain, a.sink AS hot_wallet,
+                       array_agg(DISTINCT a.address) AS deposit_addresses,
+                       array_agg(DISTINCT a.case_id) AS case_ids,
+                       array_remove(array_agg(DISTINCT c.label), NULL) AS labels
+                FROM case_addresses a JOIN cases c ON c.id = a.case_id
+                WHERE a.role = 'deposit' AND a.sink IS NOT NULL
+                GROUP BY a.chain, a.sink
+                ORDER BY COUNT(DISTINCT a.address) DESC, COUNT(DISTINCT a.case_id) DESC
                 LIMIT %s
                 """,
                 (limit,),
