@@ -1,10 +1,27 @@
-"""Small, hand-curated list of known mixer/bridge addresses.
+"""Known mixer contracts, loaded from mixers.csv (`chain,address,name,kind,source`).
 
-MVP scope only — real coverage is a curated list, not a classifier. A trail
-through an address not listed here won't be flagged as a mixer; it'll just
-look like a dead end. See research/08-demo-addresses.md for sourcing.
+Sourced rows only: every row carries the URL it came from. Tornado Cash rows
+come from the project's own deployment config; Blender.io, Sinbad and the
+Wasabi/Samourai coinjoin addresses are not repeated here because they already
+reach the tracer as GraphSense `mixing_service`/`coinjoin` labels (see
+risk.MIXER_CATEGORIES). A trail through an address not listed in either place
+looks like a dead end, not a mixer — this is a curated list, not a classifier.
+
+`chain` is the trace's currency code (ETH, MATIC, BNB...), the same key
+trace.py looks up with.
 """
+import csv
+from pathlib import Path
 
-KNOWN_MIXERS = {
-    ("ETH", "0x8589427373d6d84e98730d7795d8f6f8731fda16"): "Tornado Cash: Donation address (mixer; OFAC-delisted 21 Mar 2025)",
-}
+from app.addresses import normalize_address
+
+MIXERS_CSV = Path(__file__).with_name("mixers.csv")
+
+
+def load_mixers(path: Path = MIXERS_CSV) -> dict[tuple[str, str], str]:
+    with open(path, newline="", encoding="utf-8") as fh:
+        return {(r["chain"].upper(), normalize_address(r["address"])): r["name"]
+                for r in csv.DictReader(fh) if r["kind"] == "mixer"}
+
+
+KNOWN_MIXERS = load_mixers()

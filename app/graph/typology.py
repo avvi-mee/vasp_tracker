@@ -48,6 +48,10 @@ FANOUT_WINDOW_SECONDS = 7 * 24 * 3600
 PEEL_MIN_HOPS = 3
 PEEL_MIN_FORWARD_RATIO = 0.70
 STRUCTURING_MIN_REPEATS = 4
+# Tornado-style pools accept only these sizes, so deposits into one are exact.
+MIXER_DENOMINATIONS = (0.1, 1, 10, 100)
+MIXER_MIN_DEPOSITS = 3
+MIXER_MIN_SHARE = 0.80          # of everything this wallet sent to that destination
 
 
 @dataclass
@@ -247,13 +251,79 @@ def _round_amount_structuring(outgoing: list[dict]) -> Typology | None:
     )
 
 
-def detect(result, seed_txs: list[dict], asset: tuple[str, str] | None = None) -> list[Typology]:
+def _mixer_like_denominations(outgoing: list[dict]) -> Typology | None:
+    """Repeated exact 0.1/1/10/100-unit sends to one address, and little else
+    going there. Recognises a fixed-denomination mixer pool with no label at
+    all — the pool the list in known_mixers.py has never heard of."""
+    by_dest: dict[str, list[dict]] = {}
+    for t in outgoing:
+        by_dest.setdefault(_normalize(t["to_addr"]), []).append(t)
+    best = None
+    for dest, sent in by_dest.items():
+        exact = [t for t in sent if round(amount(t), 8) in MIXER_DENOMINATIONS]
+        if (len(exact) >= MIXER_MIN_DEPOSITS and len(exact) / len(sent) >= MIXER_MIN_SHARE
+                and (best is None or len(exact) > len(best[1]))):
+            best = (dest, exact, len(sent))
+    if not best:
+        return None
+    dest, exact, total = best
+    sizes = sorted({round(amount(t), 8) for t in exact})
+    return Typology(
+        name="mixer_like_denominations",
+        title="Fixed-size deposits (mixer-pool shape)",
+        severity="medium",
+        confidence=round(min(0.75, 0.35 + 0.08 * len(exact)), 2),
+        explanation=(
+            f"{len(exact)} of the {total} transfers this wallet sent to {dest} were exactly "
+            f"{', '.join(f'{s:g}' for s in sizes)} units. Mixer pools accept only fixed sizes like "
+            f"these so every deposit looks identical. A regular payee or a subscription can look "
+            f"the same, so this is a reason to inspect {dest}, not a finding that it is a mixer."),
+        stats={"destination": dest, "deposits": len(exact), "transfers_to_destination": total,
+               "denominations": sizes},
+        evidence=[dest] + [t["tx_hash"] for t in exact if t.get("tx_hash")][:9],
+    )
+
+
+def _mixer_to_exchange(result, incoming: list[dict], mixer_addrs) -> Typology | None:
+    """Funded by a known mixer, and the trail from here reaches an exchange:
+    the cash-out end of a mixing job. The mixer is upstream of the seed and the
+    exchange downstream, which is why one trace path can never show both — a
+    trace stops at the first mixer it meets."""
+    funded = [t for t in incoming if _normalize(t["from_addr"]) in mixer_addrs]
+    if not funded:
+        return None
+    reached = [(c.entity_type, c.label) for c in getattr(result, "candidates", None) or []]
+    reached.append((getattr(result, "entity_type", None), getattr(result, "label", None)))
+    hit = next((r for r in reached if "exchange" in (r[0] or "").lower()), None)
+    if hit is None:
+        return None
+    exchange = hit[1] or "an exchange"
+    mixers = sorted({_normalize(t["from_addr"]) for t in funded})
+    return Typology(
+        name="mixer_to_exchange",
+        title="Mixer output cashed out at an exchange",
+        severity="high",
+        confidence=0.70,
+        explanation=(
+            f"This wallet received {len(funded)} transfer(s) directly from known mixer "
+            f"address(es), and the trail from it leads on to {exchange}. Mixing "
+            f"and then cashing out is the standard way to break the link between a crime and the "
+            f"account that finally sells the funds — and the exchange holds that account's KYC."),
+        stats={"mixer_transfers": len(funded), "mixers": mixers, "exchange": exchange},
+        evidence=mixers + [t["tx_hash"] for t in funded if t.get("tx_hash")][:9],
+    )
+
+
+def detect(result, seed_txs: list[dict], asset: tuple[str, str] | None = None,
+           mixer_addrs=frozenset()) -> list[Typology]:
     """Run every detector over one traced address.
 
     `seed_txs` is the seed's own transactions in both directions — the same
     fetch the trace's first hop already made. `asset` restricts the behavioural
     detectors to one asset when the trace followed one, for the same reason
     nothing else in this project sums values across different decimal scales.
+    `mixer_addrs` is the normalised set of known mixer addresses on this
+    trace's chain; without it the mixer-to-exchange check simply does not run.
     Returned highest-severity first.
     """
     seed = _normalize(getattr(result, "seed_address", "") or "")
@@ -267,6 +337,8 @@ def detect(result, seed_txs: list[dict], asset: tuple[str, str] | None = None) -
         _fan_out(seed, outgoing) if outgoing else None,
         _peel_chain(result),
         _round_amount_structuring(outgoing) if outgoing else None,
+        _mixer_like_denominations(outgoing) if outgoing else None,
+        _mixer_to_exchange(result, incoming, mixer_addrs) if incoming and mixer_addrs else None,
     ]
     order = {"high": 0, "medium": 1, "low": 2}
     return sorted((f for f in found if f), key=lambda t: (order[t.severity], -t.confidence))

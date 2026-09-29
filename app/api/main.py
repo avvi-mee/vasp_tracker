@@ -264,7 +264,8 @@ def _run_trace(req: TraceRequest):
     result.oracle_sanctioned = screen_addresses(screened, chain_cfg["currency"])
     result.api_sanctioned = api_screen_addresses(screened)
 
-    typologies = detect_typologies(result, seed_txs, asset=result.asset)
+    mixer_addrs = {a for cur, a in KNOWN_MIXERS if cur == chain_cfg["currency"]}
+    typologies = detect_typologies(result, seed_txs, asset=result.asset, mixer_addrs=mixer_addrs)
     risk = assess(result, typologies)
     return chain, chain_cfg, result, risk, typologies, seed_txs
 

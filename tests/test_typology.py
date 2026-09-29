@@ -167,6 +167,71 @@ def test_structuring_ignores_organic_amounts():
     assert "round_amount_structuring" not in _names(detect(_result(), txs))
 
 
+# --- mixer-shaped deposits ------------------------------------------------
+
+def test_mixer_denominations_fire_on_repeated_exact_pool_sizes_to_one_contract():
+    """Tornado-style pools accept only fixed sizes (0.1/1/10/100). Four exact
+    1-unit deposits into one contract, with nothing else going there, is that shape."""
+    txs = [_tx(SEED, "0xpool", 1, 1000 + i * HOUR) for i in range(4)]
+    m = next(t for t in detect(_result(), txs) if t.name == "mixer_like_denominations")
+    assert m.stats["destination"] == "0xpool"
+    assert m.stats["deposits"] == 4
+    assert m.severity == "medium"
+
+
+def test_mixer_denominations_ignore_ordinary_amounts_to_one_destination():
+    """Paying the same shop five times in odd amounts is not a fixed-denomination pool."""
+    txs = [_tx(SEED, "0xshop", v, 1000 + i * HOUR) for i, v in enumerate([1.37, 2.5, 7.31, 0.92, 12.04])]
+    assert "mixer_like_denominations" not in _names(detect(_result(), txs))
+
+
+def test_mixer_denominations_need_repeats():
+    txs = [_tx(SEED, "0xpool", 10, 1000), _tx(SEED, "0xpool", 10, 2000)]
+    assert "mixer_like_denominations" not in _names(detect(_result(), txs))
+
+
+def test_mixer_denominations_ignore_a_destination_that_mostly_gets_other_amounts():
+    """Three 1-unit payments among many ordinary ones is a regular payee, not a pool."""
+    txs = [_tx(SEED, "0xpayee", 1, 1000 + i) for i in range(3)]
+    txs += [_tx(SEED, "0xpayee", 3.7 + i, 5000 + i) for i in range(8)]
+    assert "mixer_like_denominations" not in _names(detect(_result(), txs))
+
+
+# --- mixer then exchange ---------------------------------------------------
+
+MIXER = "0xmixerpool"
+
+
+def _exchange_candidate(entity_type="exchange"):
+    return Candidate([SEED, "0xdeposit", "0xbinance"], 2, entity_type, "Binance", 0.8, "tagpack",
+                     None, None, None, 1.0)
+
+
+def test_mixer_to_exchange_fires_when_funded_by_a_mixer_and_the_trail_reaches_an_exchange():
+    txs = [_tx(MIXER, SEED, 10, 1000), _tx(SEED, "0xdeposit", 10, 2000)]
+    found = detect(_result(candidates=[_exchange_candidate()]), txs, mixer_addrs={MIXER})
+    m = next(t for t in found if t.name == "mixer_to_exchange")
+    assert m.severity == "high"
+    assert MIXER in m.evidence
+
+
+def test_mixer_to_exchange_needs_the_exchange_end():
+    txs = [_tx(MIXER, SEED, 10, 1000), _tx(SEED, "0xelsewhere", 10, 2000)]
+    found = detect(_result(candidates=[_exchange_candidate("unknown")]), txs, mixer_addrs={MIXER})
+    assert "mixer_to_exchange" not in _names(found)
+
+
+def test_mixer_to_exchange_needs_the_mixer_end():
+    txs = [_tx("0xalice", SEED, 10, 1000), _tx(SEED, "0xdeposit", 10, 2000)]
+    found = detect(_result(candidates=[_exchange_candidate()]), txs, mixer_addrs={MIXER})
+    assert "mixer_to_exchange" not in _names(found)
+
+
+def test_mixer_to_exchange_is_silent_when_no_mixer_list_is_given():
+    txs = [_tx(MIXER, SEED, 10, 1000), _tx(SEED, "0xdeposit", 10, 2000)]
+    assert "mixer_to_exchange" not in _names(detect(_result(candidates=[_exchange_candidate()]), txs))
+
+
 # --- ordering, asset scoping, and the empty case ---------------------------
 
 def test_results_are_ordered_worst_first():
